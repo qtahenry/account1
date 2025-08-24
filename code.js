@@ -16,7 +16,8 @@ function onOpen() {
   menu.addSubMenu(tinhGiaMenu);
   menu.addSeparator();
   
-  menu.addItem('📦 Chọn Hàng hóa', 'moSidebarHangHoa');
+  // Ghi chú: Chức năng hàng hóa đã được tích hợp vào Bảng Điều Khiển Tổng Hợp
+  // menu.addItem('📦 Chọn Hàng hóa', 'moSidebarHangHoa');
   
   menu.addToUi();
 }
@@ -881,13 +882,49 @@ function taoNhapXuatTon() {
     return;
   }
   
-  // Lấy ngày bắt đầu và kết thúc từ sheet NXT
-  const ngayBatDau = new Date(sheetNXT.getRange('O1').getValue());
-  const ngayKetThuc = new Date(sheetNXT.getRange('O2').getValue());
+
   
-  // Đọc điều kiện lọc mã kho và mã hàng
-  const maKhoLoc = sheetNXT.getRange('M1').getValue()?.toString().trim() || '';
-  const maHangLoc = sheetNXT.getRange('M2').getValue()?.toString().trim() || '';
+  // Lấy ngày bắt đầu và kết thúc từ Properties Service hoặc từ sheet NXT
+  let ngayBatDau, ngayKetThuc;
+  let maKhoLoc = '', maHangLoc = '';
+  
+  // Kiểm tra xem có tham số từ sidebar không
+  const scriptProps = PropertiesService.getScriptProperties();
+  const sidebarStartDate = scriptProps.getProperty('NXT_START_DATE');
+  const sidebarEndDate = scriptProps.getProperty('NXT_END_DATE');
+  const selectedHangHoa = scriptProps.getProperty('SELECTED_HANGHOA_NXT');
+  
+  // Biến để lưu danh sách hàng hóa từ sidebar
+  let sidebarHangHoaList = [];
+  
+  if (sidebarStartDate && sidebarEndDate) {
+    // Sử dụng tham số từ sidebar
+    // Đảm bảo ngày được xử lý chính xác (không bị ảnh hưởng timezone)
+    ngayBatDau = new Date(sidebarStartDate + 'T00:00:00');
+    ngayKetThuc = new Date(sidebarEndDate + 'T23:59:59');
+    console.log(`📅 Sử dụng ngày từ sidebar: ${ngayBatDau.toLocaleDateString('vi-VN')} → ${ngayKetThuc.toLocaleDateString('vi-VN')}`);
+    
+    // Đọc danh sách hàng hóa đã chọn từ sidebar
+    if (selectedHangHoa) {
+      sidebarHangHoaList = JSON.parse(selectedHangHoa);
+      console.log(`🔍 Lọc theo ${sidebarHangHoaList.length} hàng hóa từ sidebar`);
+    }
+    
+    // Xóa tham số sau khi sử dụng
+    scriptProps.deleteProperty('NXT_START_DATE');
+    scriptProps.deleteProperty('NXT_END_DATE');
+    scriptProps.deleteProperty('SELECTED_HANGHOA_NXT');
+    
+  } else {
+    // Sử dụng tham số từ sheet NXT (cách cũ)
+    ngayBatDau = new Date(sheetNXT.getRange('O1').getValue());
+    ngayKetThuc = new Date(sheetNXT.getRange('O2').getValue());
+    
+    // Đọc điều kiện lọc mã kho và mã hàng từ sheet
+    maKhoLoc = sheetNXT.getRange('M1').getValue()?.toString().trim() || '';
+    maHangLoc = sheetNXT.getRange('M2').getValue()?.toString().trim() || '';
+    console.log(`📅 Sử dụng ngày từ sheet NXT: ${ngayBatDau.toLocaleDateString('vi-VN')} → ${ngayKetThuc.toLocaleDateString('vi-VN')}`);
+  }
   
   if (!ngayBatDau || !ngayKetThuc) {
     SpreadsheetApp.getUi().alert('Vui lòng nhập ngày bắt đầu (O1) và ngày kết thúc (O2) trong sheet NXT');
@@ -923,7 +960,13 @@ function taoNhapXuatTon() {
   const hangHoaMap = new Map();
 
   // Hàm kiểm tra điều kiện lọc
-  function kiemTraDieuKienLoc(maKho, maHang, maKhoLoc, maHangLoc) {
+  function kiemTraDieuKienLoc(maKho, maHang, maKhoLoc, maHangLoc, sidebarHangHoaList = []) {
+    // Nếu có danh sách hàng hóa từ sidebar → kiểm tra theo danh sách này
+    if (sidebarHangHoaList.length > 0) {
+      const key = `${maKho}|${maHang}`;
+      return sidebarHangHoaList.includes(key);
+    }
+    
     // Nếu không có điều kiện lọc nào → hiển thị tất cả
     if (!maKhoLoc && !maHangLoc) {
       return true;
@@ -986,7 +1029,7 @@ function taoNhapXuatTon() {
     const gtDauKy = parseFloat(row[6]) || 0;
     
     // Kiểm tra điều kiện lọc
-    if (maKho && maHang && kiemTraDieuKienLoc(maKho, maHang, maKhoLoc, maHangLoc)) {
+    if (maKho && maHang && kiemTraDieuKienLoc(maKho, maHang, maKhoLoc, maHangLoc, sidebarHangHoaList)) {
       const key = `${maKho}|${maHang}`;
       
       hangHoaMap.set(key, {
@@ -1042,7 +1085,7 @@ function taoNhapXuatTon() {
     }
     
     // Kiểm tra điều kiện lọc
-    if (!kiemTraDieuKienLoc(maKho, maHang, maKhoLoc, maHangLoc)) {
+    if (!kiemTraDieuKienLoc(maKho, maHang, maKhoLoc, maHangLoc, sidebarHangHoaList)) {
       giaoDichKhongKhopLoc++;
       continue;
     }
@@ -1073,6 +1116,7 @@ function taoNhapXuatTon() {
     }
     
     const hangHoa = hangHoaMap.get(key);
+    
     const laGiaoDichTruocKy = ngayHachToan < ngayBatDau;
     const laGiaoDichTrongKy = ngayHachToan >= ngayBatDau && ngayHachToan <= ngayKetThuc;
     
@@ -1728,5 +1772,143 @@ function getReportDates() {
   } catch (error) {
     console.error('Lỗi lấy ngày báo cáo:', error.toString());
     return null;
+  }
+}
+
+/**
+ * Hàm mới để lấy dữ liệu hàng hóa cho sidebar Unified
+ */
+function getHangHoaForSidebar() {
+  try {
+    const cache = CacheService.getScriptCache();
+    const CACHE_KEY = 'DANH_SACH_HANG_HOA';
+
+    const cachedData = cache.get(CACHE_KEY);
+    if (cachedData != null) {
+      console.log('✅ Loaded products from CACHE for Unified sidebar.');
+      const hangHoaList = JSON.parse(cachedData);
+      // Thêm uniqueId cho mỗi item
+      hangHoaList.forEach(item => {
+        item.uniqueId = `${item.maKho}|${item.maHang}`;
+      });
+      return hangHoaList;
+    }
+
+    console.log('⚠️ Cache miss. Reading products from Sheet "DMHH" for Unified sidebar.');
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheetDMHH = ss.getSheetByName('DMHH');
+    if (!sheetDMHH) {
+      throw new Error('Không tìm thấy sheet "DMHH"');
+    }
+
+    const data = sheetDMHH.getDataRange().getValues();
+    const hangHoaList = [];
+    // Bắt đầu từ dòng 2 để bỏ qua tiêu đề
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i];
+      const maKho = row[0]?.toString().trim();
+      const maHang = row[1]?.toString().trim();
+      if (maKho && maHang) { // Chỉ lấy hàng hóa có đủ mã kho và mã hàng
+        const item = {
+          maKho: maKho,
+          maHang: maHang,
+          tenHang: row[2]?.toString().trim() || '',
+          quyCach: row[3]?.toString().trim() || '',
+          dvt: row[4]?.toString().trim() || ''
+        };
+        item.uniqueId = `${maKho}|${maHang}`;
+        hangHoaList.push(item);
+      }
+    }
+
+    // Sắp xếp để dễ tìm kiếm
+    hangHoaList.sort((a, b) => a.maKho.localeCompare(b.maKho) || a.maHang.localeCompare(b.maHang));
+
+    // Lưu vào cache trong 15 phút
+    cache.put(CACHE_KEY, JSON.stringify(hangHoaList), 900);
+    console.log(`✅ Loaded and cached ${hangHoaList.length} products for Unified sidebar.`);
+
+    return hangHoaList;
+  } catch (e) {
+    console.error('Error in getHangHoaForSidebar: ' + e.toString());
+    return [];
+  }
+}
+
+/**
+ * Hàm ghi hàng hóa vào sheet từ sidebar Unified (tương thích với cấu trúc dữ liệu mới)
+ * @param {Array<Object>} selectedItems Mảng các đối tượng hàng hóa đã chọn từ sidebar Unified
+ */
+function ghiHangHoaVaoSheet(selectedItems) {
+  try {
+    if (!selectedItems || selectedItems.length === 0) {
+      return { success: false, error: 'Không có hàng hóa nào được chọn.' };
+    }
+
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const activeCell = ss.getActiveCell();
+    const sheet = activeCell.getSheet();
+    const startRow = activeCell.getRow();
+    const startCol = activeCell.getColumn();
+    
+    // Tạo mảng 2 chiều với đầy đủ 5 thông tin
+    const outputData = selectedItems.map(item => [
+      item.maKho, 
+      item.maHang, 
+      item.tenHang, 
+      item.quyCach || '', 
+      item.dvt || ''      
+    ]);
+    
+    // Ghi dữ liệu ra một vùng rộng 5 cột
+    sheet.getRange(startRow, startCol, outputData.length, 5).setValues(outputData);
+
+    console.log(`✅ Unified Sidebar: Written ${outputData.length} items (5 columns) to ${sheet.getName()}`);
+    return { success: true, count: outputData.length }; 
+
+  } catch (e) {
+    console.error('Error in ghiHangHoaVaoSheet: ' + e.toString());
+    return { success: false, error: e.toString() };
+  }
+}
+
+/**
+ * Hàm tạo báo cáo Nhập Xuất Tồn từ sidebar với hàng hóa đã chọn
+ * Hoạt động tương tự như taoCanDoiPhatSinh - nhận tham số trực tiếp từ sidebar
+ * @param {string} startDate Ngày bắt đầu (YYYY-MM-DD)
+ * @param {string} endDate Ngày kết thúc (YYYY-MM-DD)
+ * @param {Array<Object>} selectedHangHoa Mảng hàng hóa đã chọn từ sidebar
+ */
+function taoNhapXuatTonFromSidebar(startDate, endDate, selectedHangHoa) {
+  try {
+    console.log(`🚀 Bắt đầu tạo báo cáo NXT từ sidebar: ${startDate} → ${endDate}`);
+    console.log(`📦 Số lượng hàng hóa được chọn: ${selectedHangHoa.length}`);
+    
+    if (!selectedHangHoa || selectedHangHoa.length === 0) {
+      throw new Error('Không có hàng hóa nào được chọn');
+    }
+    
+    // Gọi function taoNhapXuatTon() với tham số từ sidebar
+    // Tương tự như cách taoCanDoiPhatSinh hoạt động
+    console.log('📊 Gọi function taoNhapXuatTon() với tham số từ sidebar...');
+    
+    // Lưu danh sách hàng hóa đã chọn vào Properties Service để function cũ có thể đọc
+    const selectedHangHoaKeys = selectedHangHoa.map(item => `${item.maKho}|${item.maHang}`);
+    PropertiesService.getScriptProperties().setProperty('SELECTED_HANGHOA_NXT', JSON.stringify(selectedHangHoaKeys));
+    
+    // Lưu ngày báo cáo vào Properties Service
+    PropertiesService.getScriptProperties().setProperty('NXT_START_DATE', startDate);
+    PropertiesService.getScriptProperties().setProperty('NXT_END_DATE', endDate);
+    
+    // Gọi function taoNhapXuatTon() có sẵn
+    taoNhapXuatTon();
+    
+    console.log(`✅ Hoàn thành báo cáo NXT cho ${selectedHangHoa.length} hàng hóa`);
+    
+    return { success: true, message: `Đã tạo báo cáo NXT cho ${selectedHangHoa.length} hàng hóa` };
+    
+  } catch (error) {
+    console.error('❌ Lỗi trong taoNhapXuatTonFromSidebar: ' + error.toString());
+    throw new Error('Lỗi tạo báo cáo NXT: ' + error.toString());
   }
 }
