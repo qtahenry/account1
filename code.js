@@ -1361,6 +1361,40 @@ function clearAccountFilter() {
 
 
 /**
+ * HÀM PHỤ: Kiểm tra tính hợp lệ của dữ liệu đầu vào
+ */
+function validateInputData(startDateStr, endDateStr, taiKhoanCanXem) {
+  const errors = [];
+  
+  // Kiểm tra ngày
+  if (!startDateStr || !endDateStr) {
+    errors.push('Thiếu tham số ngày bắt đầu hoặc kết thúc');
+  } else {
+    const startDate = new Date(startDateStr);
+    const endDate = new Date(endDateStr);
+    
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      errors.push('Định dạng ngày không hợp lệ');
+    } else if (startDate > endDate) {
+      errors.push('Ngày bắt đầu không thể lớn hơn ngày kết thúc');
+    }
+  }
+  
+  // Kiểm tra tài khoản
+  if (!taiKhoanCanXem || !Array.isArray(taiKhoanCanXem) || taiKhoanCanXem.length === 0) {
+    errors.push('Thiếu danh sách tài khoản cần xem');
+  } else {
+    taiKhoanCanXem.forEach((tk, index) => {
+      if (!tk || typeof tk !== 'string' || tk.trim() === '') {
+        errors.push(`Tài khoản thứ ${index + 1} không hợp lệ`);
+      }
+    });
+  }
+  
+  return errors;
+}
+
+/**
  * HÀM CHÍNH V2: Tạo báo cáo Sổ chi tiết, nhận tham số từ sidebar.
  * PHIÊN BẢN NÂNG CẤP: Hỗ trợ tổng hợp dữ liệu từ tài khoản con lên tài khoản cha
  */
@@ -1432,11 +1466,11 @@ function taoSoChiTietTaiKhoan_V2(startDateStr, endDateStr, taiKhoanCanXem) {
       console.warn('⚠️ CẢNH BÁO:', validation.warnings.join(', '));
     }
 
-          const allTransactionsRaw = readDataFromPrefixedSheets(ss, 'DL_', ['NGAY_HT', 'TK_NO', 'TK_CO', 'SO_TIEN']);
-      const allTransactions = xuLyGiaoDichVaThue(allTransactionsRaw);
-      
-      // Tối ưu hóa xử lý giao dịch lớn
-      const optimizedTransactions = optimizeLargeTransactionProcessing(allTransactions);
+    const allTransactionsRaw = readDataFromPrefixedSheets(ss, 'DL_', ['NGAY_HT', 'TK_NO', 'TK_CO', 'SO_TIEN']);
+    const allTransactions = xuLyGiaoDichVaThue(allTransactionsRaw);
+    
+    // Tối ưu hóa xử lý giao dịch lớn
+    const optimizedTransactions = optimizeLargeTransactionProcessing(allTransactions);
 
     ss.toast('Đang tính toán số dư và phát sinh...', 'Bước 2/4');
     const outputData = [];
@@ -2336,29 +2370,7 @@ function createReportTitle(parentAccount, parentInfo, childAccounts) {
   return title;
 }
 
-/**
- * HÀM PHỤ: Tính toán phát sinh tổng hợp từ tài khoản cha và con
- */
-function calculateAggregatedPhatSinh(trans, parentAccount, childAccounts) {
-  let phatSinhNo = 0;
-  let phatSinhCo = 0;
-  
-  // Phát sinh từ tài khoản cha
-  if (trans.TK_NO === parentAccount) phatSinhNo += trans.SO_TIEN;
-  if (trans.TK_CO === parentAccount) phatSinhCo += trans.SO_TIEN;
-  
-  // Phát sinh từ tài khoản con
-  if (childAccounts.length > 0) {
-    if (isAccountInHierarchy(trans.TK_NO, parentAccount, childAccounts)) {
-      phatSinhNo += trans.SO_TIEN;
-    }
-    if (isAccountInHierarchy(trans.TK_CO, parentAccount, childAccounts)) {
-      phatSinhCo += trans.SO_TIEN;
-    }
-  }
-  
-  return [phatSinhNo, phatSinhCo];
-}
+
 
 /**
  * HÀM PHỤ: Xử lý giao dịch theo batch để tối ưu hiệu suất
@@ -2395,28 +2407,6 @@ function handleInternalTransactions(transactions, parentAccount, childAccounts) 
     
     return true;
   });
-}
-
-/**
- * HÀM PHỤ: Tính toán số dư cuối kỳ với xử lý giao dịch nội bộ (SỬA LẠI)
- */
-function calculateFinalBalanceWithInternalHandling(parentAccount, childAccounts, duNoDauKy, duCoDauKy, transactionsInPeriod) {
-  let duNoCuoiKy = duNoDauKy;
-  let duCoCuoiKy = duCoDauKy;
-  
-  // Xử lý giao dịch nội bộ
-  const filteredTransactions = handleInternalTransactions(transactionsInPeriod, parentAccount, childAccounts);
-  
-  filteredTransactions.forEach(trans => {
-    const [phatSinhNo, phatSinhCo] = calculateAggregatedPhatSinh(trans, parentAccount, childAccounts);
-    
-    // Cập nhật số dư cuối kỳ (GIỮ NGUYÊN LOGIC HIỆN TẠI)
-    let duNoMoi = duNoCuoiKy + phatSinhNo;
-    let duCoMoi = duCoCuoiKy + phatSinhCo;
-    [duNoCuoiKy, duCoCuoiKy] = tinhSoDu(duNoMoi, duCoMoi);
-  });
-  
-  return [duNoCuoiKy, duCoCuoiKy];
 }
 
 /**
@@ -2589,4 +2579,28 @@ function debugSoDuDauKy(parentAccount, childAccounts, allTransactions, ngayBatDa
   console.log(`   - Số dư động đầu kỳ: Nợ ${duNoFinal}, Có ${duCoFinal}`);
   
   return [duNoFinal, duCoFinal];
+}
+
+/**
+ * HÀM PHỤ: Tạo báo cáo tóm tắt quá trình xử lý
+ */
+function createProcessingSummary(taiKhoanCanXem, childAccountsMap, processingTime) {
+  console.log('\n📊 BÁO CÁO TÓM TẮT QUÁ TRÌNH XỬ LÝ:');
+  console.log(`⏱️  Tổng thời gian xử lý: ${processingTime}ms`);
+  console.log(`📋 Số lượng tài khoản được xử lý: ${taiKhoanCanXem.length}`);
+  
+  let totalChildAccounts = 0;
+  taiKhoanCanXem.forEach(tk => {
+    const childAccounts = childAccountsMap.get(tk) || [];
+    totalChildAccounts += childAccounts.length;
+    
+    if (childAccounts.length > 0) {
+      console.log(`   - TK ${tk}: Tổng hợp từ ${childAccounts.length} tài khoản con`);
+    } else {
+      console.log(`   - TK ${tk}: Không có tài khoản con`);
+    }
+  });
+  
+  console.log(`📈 Tổng số tài khoản con được xử lý: ${totalChildAccounts}`);
+  console.log('✅ Hoàn thành xử lý!\n');
 }
