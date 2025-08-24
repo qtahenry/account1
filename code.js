@@ -2,9 +2,8 @@ function onOpen() {
   const ui = SpreadsheetApp.getUi();
   const menu = ui.createMenu('⚡ Kế toán Pro');
   
-  menu.addItem('📊 Tạo Cân đối Phát sinh', 'taoCanDoiPhatSinh');
   menu.addItem('📦 Tạo Nhập Xuất Tồn', 'taoNhapXuatTon');
-  menu.addItem('📖 Tạo Sổ Chi tiết Tài khoản', 'moSidebarSoChiTiet');
+  menu.addItem('🚀 Bảng Điều Khiển Tổng Hợp', 'moSidebarUnified');
   menu.addSeparator();
   
   // Menu con đầy đủ cho chức năng Tính giá xuất kho
@@ -17,9 +16,7 @@ function onOpen() {
   menu.addSubMenu(tinhGiaMenu);
   menu.addSeparator();
   
-  menu.addItem('💼 Chọn Tài khoản', 'moSidebarTaiKhoan');
   menu.addItem('📦 Chọn Hàng hóa', 'moSidebarHangHoa');
-  menu.addItem('🎯 Lọc Tài Khoản', 'openAccountFilter');
   
   menu.addToUi();
 }
@@ -356,38 +353,58 @@ function createDataSummary(spreadsheet, reportType) {
 
 // ==================== CÁC HÀM BÁO CÁO SỬ DỤNG UNIVERSAL READER ====================
 
-function taoCanDoiPhatSinh() {
+function taoCanDoiPhatSinh(ngayBatDau = null, ngayKetThuc = null) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ui = SpreadsheetApp.getUi();
   
-  // Lấy các sheet
-  const sheetDMTK = ss.getSheetByName('DMTK');
-  const sheetCDPS = ss.getSheetByName('CDPS');
-  
-  if (!sheetDMTK || !sheetCDPS) {
-    SpreadsheetApp.getUi().alert('Không tìm thấy sheet DMTK hoặc CDPS');
-    return;
-  }
-  
-  // Lấy ngày bắt đầu và kết thúc từ sheet CDPS
-  const ngayBatDau = new Date(ss.getRangeByName('NgayBatDau_CDPS').getValue());
-  const ngayKetThuc = new Date(ss.getRangeByName('NgayKetThuc_CDPS').getValue());
-  
-  if (!ngayBatDau || !ngayKetThuc) {
-    SpreadsheetApp.getUi().alert('Vui lòng nhập ngày bắt đầu (L1) và ngày kết thúc (L2) trong sheet CDPS');
-    return;
-  }
-  
-  // ĐỌC FILTER TỪ PROPERTIES SERVICE
-  const selectedAccounts = getSelectedAccounts();
-  const isFiltered = selectedAccounts.length > 0;
-  
-  // Lấy dữ liệu từ sheet DMTK
-  const dataDMTK = sheetDMTK.getDataRange().getValues();
-  const headerRowDMTK = 1;
+  try {
+    // Lấy các sheet
+    const sheetDMTK = ss.getSheetByName('DMTK');
+    const sheetCDPS = ss.getSheetByName('CDPS');
+    
+    if (!sheetDMTK || !sheetCDPS) {
+      throw new Error('Không tìm thấy sheet DMTK hoặc CDPS');
+    }
+    
+    // Lấy ngày bắt đầu và kết thúc từ tham số hoặc từ sheet CDPS
+    let startDate, endDate;
+    
+    if (ngayBatDau && ngayKetThuc) {
+      startDate = new Date(ngayBatDau);
+      endDate = new Date(ngayKetThuc);
+      console.log(`📅 Sử dụng ngày từ sidebar: ${startDate.toLocaleDateString('vi-VN')} → ${endDate.toLocaleDateString('vi-VN')}`);
+    } else {
+      startDate = new Date(ss.getRangeByName('NgayBatDau_CDPS').getValue());
+      endDate = new Date(ss.getRangeByName('NgayKetThuc_CDPS').getValue());
+      console.log(`📅 Sử dụng ngày từ sheet: ${startDate.toLocaleDateString('vi-VN')} → ${endDate.toLocaleDateString('vi-VN')}`);
+    }
+    
+    if (!startDate || !endDate) {
+      throw new Error('Vui lòng nhập ngày bắt đầu và ngày kết thúc');
+    }
+    
+    // ĐỌC FILTER TỪ PROPERTIES SERVICE
+    const selectedAccounts = getSelectedAccounts();
+    const isFiltered = selectedAccounts.length > 0;
+    
+    // Thông báo nếu có filter
+    if (isFiltered) {
+      console.log(`🔍 Áp dụng filter: ${selectedAccounts.length} tài khoản được chọn`);
+      ss.toast(`Đang tạo báo cáo cho ${selectedAccounts.length} tài khoản đã chọn...`, 'Bắt đầu', -1);
+    } else {
+      console.log('🔍 Không có filter → bao gồm tất cả tài khoản có phát sinh');
+      ss.toast('Đang tạo báo cáo cho tất cả tài khoản có phát sinh...', 'Bắt đầu', -1);
+    }
+    
+    // Lấy dữ liệu từ sheet DMTK
+    const dataDMTK = sheetDMTK.getDataRange().getValues();
+    const headerRowDMTK = 1;
   
   // ĐỌC DỮ LIỆU TỪ NHIỀU SHEET DL_* BẰNG UNIVERSAL READER
+  ss.toast('Đang đọc dữ liệu từ các sheet DL_...', 'Bước 1/4', -1);
   const dataResult = getAllDataFromDLSheets(ss, 'CDPS');
   const combinedData = dataResult.data;
+  ss.toast(`✅ Đã đọc ${combinedData.length} giao dịch từ ${dataResult.summary.validSheets} sheet`, 'Bước 1/4', 3);
   
   // Tạo map để lưu trữ thông tin tài khoản
   const taiKhoanMap = new Map();
@@ -522,10 +539,12 @@ function taoCanDoiPhatSinh() {
   
   // HÀM KIỂM TRA TÀI KHOẢN CÓ THUỘC FILTER KHÔNG
   function kiemTraTaiKhoanThuocFilter(maTK) {
+    // Nếu không có filter (không chọn tài khoản nào) → bao gồm tất cả
     if (!isFiltered) return true;
     
     const ma = maTK.toString().trim();
     
+    // Kiểm tra xem tài khoản có thuộc danh sách đã chọn không
     for (const selectedTK of selectedAccounts) {
       if (ma.startsWith(selectedTK)) {
         return true;
@@ -536,6 +555,7 @@ function taoCanDoiPhatSinh() {
   }
   
   // BƯỚC 1: Đọc dữ liệu từ DMTK
+  ss.toast('Đang đọc danh mục tài khoản từ DMTK...', 'Bước 2/4', -1);
   for (let i = headerRowDMTK; i < dataDMTK.length; i++) {
     const row = dataDMTK[i];
     const maTK = row[0]?.toString().trim();
@@ -558,14 +578,32 @@ function taoCanDoiPhatSinh() {
       });
     }
   }
+  ss.toast(`✅ Đã đọc ${taiKhoanMap.size} tài khoản từ DMTK`, 'Bước 2/4', 3);
   
   // BƯỚC 2: Xử lý dữ liệu phát sinh từ TẤT CẢ CÁC SHEET DL_*
+  ss.toast('Đang xử lý dữ liệu phát sinh và tính toán số dư...', 'Bước 3/4', -1);
   let tongGiaoDichTruocKy = 0;
   let tongGiaoDichTrongKy = 0;
   let tongGiaoDichVAT = 0;
   
+  console.log(`🔍 Debug: Bắt đầu xử lý ${combinedData.length} giao dịch`);
+  console.log(`📅 Kỳ báo cáo: ${startDate.toLocaleDateString('vi-VN')} → ${endDate.toLocaleDateString('vi-VN')}`);
+  
   for (let i = 0; i < combinedData.length; i++) {
     const row = combinedData[i];
+    
+    // Debug: Kiểm tra cấu trúc dữ liệu
+    if (i < 3) {
+      console.log(`🔍 Giao dịch ${i + 1}:`, {
+        ngay: row.ngay,
+        tkNo: row.tkNo,
+        tkCo: row.tkCo,
+        soTien: row.soTien,
+        thueVAT: row.thueVAT,
+        loaiCT: row.loaiCT
+      });
+    }
+    
     const ngayHachToan = new Date(row.ngay);
     const tkNo = row.tkNo?.toString().trim();
     const tkCo = row.tkCo?.toString().trim();
@@ -573,8 +611,18 @@ function taoCanDoiPhatSinh() {
     const tienVAT = parseFloat(row.thueVAT) || 0;
     const phanLoai = row.loaiCT?.toString().trim();
     
-    const laGiaoDichTruocKy = ngayHachToan < ngayBatDau;
-    const laGiaoDichTrongKy = ngayHachToan >= ngayBatDau && ngayHachToan <= ngayKetThuc;
+    const laGiaoDichTruocKy = ngayHachToan < startDate;
+    const laGiaoDichTrongKy = ngayHachToan >= startDate && ngayHachToan <= endDate;
+    
+    // Debug: Kiểm tra logic ngày tháng
+    if (i < 3) {
+      console.log(`📅 Giao dịch ${i + 1} - Ngày: ${ngayHachToan.toLocaleDateString('vi-VN')}`, {
+        laGiaoDichTruocKy,
+        laGiaoDichTrongKy,
+        startDate: startDate.toLocaleDateString('vi-VN'),
+        endDate: endDate.toLocaleDateString('vi-VN')
+      });
+    }
     
     if (laGiaoDichTruocKy || laGiaoDichTrongKy) {
       
@@ -618,10 +666,12 @@ function taoCanDoiPhatSinh() {
           capNhatTaiKhoanTrucTiep(tkCo, tienHang, 'CO', laGiaoDichTruocKy);
         }
         
-        if (laGiaoDichTruocKy) {
-          tongGiaoDichTruocKy++;
-        } else {
+        if (laGiaoDichTrongKy) {
           tongGiaoDichTrongKy++;
+          if (i < 3) console.log(`✅ Giao dịch ${i + 1} được tính vào trong kỳ`);
+        } else if (laGiaoDichTruocKy) {
+          tongGiaoDichTruocKy++;
+          if (i < 3) console.log(`⏰ Giao dịch ${i + 1} được tính vào trước kỳ`);
         }
       }
       
@@ -637,6 +687,8 @@ function taoCanDoiPhatSinh() {
           }
           tongGiaoDichVAT++;
         }
+        
+        if (i < 3) console.log(`💰 Giao dịch ${i + 1} có VAT: ${tienVAT}`);
       }
     }
   }
@@ -668,6 +720,12 @@ function taoCanDoiPhatSinh() {
   
   // BƯỚC 4: Lọc tài khoản theo filter và dữ liệu
   function kiemTraTaiKhoanCoData(thongTin) {
+    // Luôn bao gồm tài khoản có phát sinh trong kỳ báo cáo
+    if (thongTin.phatSinhNoTrongKy !== 0 || thongTin.phatSinhCoTrongKy !== 0) {
+      return true;
+    }
+    
+    // Kiểm tra số dư đầu kỳ báo cáo (bao gồm phát sinh trước kỳ)
     const [duNoDauKyBaoCao, duCoDauKyBaoCao] = tinhSoDuSauPhatSinh(
       thongTin.duNoDauKyGoc,
       thongTin.duCoDauKyGoc,
@@ -676,18 +734,33 @@ function taoCanDoiPhatSinh() {
       thongTin.tinhChat
     );
     
-    return (duNoDauKyBaoCao !== 0 || 
-            duCoDauKyBaoCao !== 0 || 
-            thongTin.phatSinhNoTrongKy !== 0 || 
-            thongTin.phatSinhCoTrongKy !== 0);
+    return (duNoDauKyBaoCao !== 0 || duCoDauKyBaoCao !== 0);
   }
   
   const taiKhoanCoData = new Map();
+  let taiKhoanTuDong = 0;
+  let taiKhoanDuocChon = 0;
+  
   for (const [maTK, thongTin] of taiKhoanMap.entries()) {
-    if (kiemTraTaiKhoanThuocFilter(maTK) && kiemTraTaiKhoanCoData(thongTin)) {
+    const thuocFilter = kiemTraTaiKhoanThuocFilter(maTK);
+    const coData = kiemTraTaiKhoanCoData(thongTin);
+    
+    if (thuocFilter && coData) {
       taiKhoanCoData.set(maTK, thongTin);
+      
+      // Phân loại tài khoản để thống kê
+      if (thongTin.ten.startsWith('Tài khoản ')) {
+        taiKhoanTuDong++;
+      } else {
+        taiKhoanDuocChon++;
+      }
     }
   }
+  
+  console.log(`📊 Thống kê tài khoản: ${taiKhoanDuocChon} được chọn, ${taiKhoanTuDong} tự động`);
+  
+  // BƯỚC 4: Tạo báo cáo và ghi dữ liệu
+  ss.toast('Đang tạo báo cáo và ghi dữ liệu...', 'Bước 4/4', -1);
   
   // Tạo header cho bảng CDPS
   const headers = [
@@ -697,10 +770,10 @@ function taoCanDoiPhatSinh() {
     'Dư nợ cuối kỳ', 'Dư có cuối kỳ'
   ];
   
-  // Xóa dữ liệu cũ từ dòng 4 trở đi
+  // Xóa sạch toàn bộ dữ liệu cũ từ dòng 4 trở đi
   const lastRow = sheetCDPS.getLastRow();
-  if (lastRow >= 5) {
-    sheetCDPS.getRange(5, 1, lastRow - 5, 10).clear();
+  if (lastRow >= 4) {
+    sheetCDPS.getRange(4, 1, lastRow - 3, 10).clear();
   }
   
   // Chuẩn bị dữ liệu để ghi
@@ -772,7 +845,24 @@ function taoCanDoiPhatSinh() {
   const filterText = isFiltered ? `\n- Filter: ${selectedAccounts.join(', ')}` : '\n- Filter: Tất cả tài khoản';
   const sheetInfo = createDataSummary(ss, 'CDPS');
   
-  SpreadsheetApp.getUi().alert(`✅ Báo cáo Cân đối Phát sinh đã hoàn thành!\n\n📊 Thống kê:\n- Hiển thị: ${taiKhoanHienThi} tài khoản\n- Bỏ qua: ${taiKhoanBoQua} tài khoản${filterText}\n- Giao dịch trước kỳ: ${tongGiaoDichTruocKy}\n- Giao dịch trong kỳ: ${tongGiaoDichTrongKy}\n- Xử lý VAT: ${tongGiaoDichVAT} giao dịch\n\n📋 Nguồn dữ liệu:\n${sheetInfo}\n\n📅 Kỳ báo cáo: ${ngayBatDau.toLocaleDateString('vi-VN')} → ${ngayKetThuc.toLocaleDateString('vi-VN')}`);
+  // Debug: Thống kê cuối cùng
+  console.log(`📊 Thống kê cuối cùng:`, {
+    tongGiaoDichTruocKy,
+    tongGiaoDichTrongKy,
+    tongGiaoDichVAT,
+    startDate: startDate.toLocaleDateString('vi-VN'),
+    endDate: endDate.toLocaleDateString('vi-VN')
+  });
+  
+  ss.toast('✅ Hoàn thành!', 'Thành công', 5);
+  
+  SpreadsheetApp.getUi().alert(`✅ Báo cáo Cân đối Phát sinh đã hoàn thành!\n\n📊 Thống kê:\n- Hiển thị: ${taiKhoanHienThi} tài khoản (${taiKhoanDuocChon} được chọn, ${taiKhoanTuDong} tự động)\n- Bỏ qua: ${taiKhoanBoQua} tài khoản${filterText}\n- Giao dịch trước kỳ: ${tongGiaoDichTruocKy}\n- Giao dịch trong kỳ: ${tongGiaoDichTrongKy}\n- Xử lý VAT: ${tongGiaoDichVAT} giao dịch\n\n📋 Nguồn dữ liệu:\n${sheetInfo}\n\n📅 Kỳ báo cáo: ${startDate.toLocaleDateString('vi-VN')} → ${endDate.toLocaleDateString('vi-VN')}`);
+  
+  } catch (error) {
+    console.error("LỖI TẠO BÁO CÁO CDPS: " + error.toString() + error.stack);
+    ss.toast('❌ Lỗi: ' + error.toString(), 'Lỗi', 10);
+    SpreadsheetApp.getUi().alert('❌ Lỗi khi tạo báo cáo Cân đối Phát sinh:\n\n' + error.toString());
+  }
 }
 
 
@@ -1234,10 +1324,21 @@ function taoSoChiTietTaiKhoan_V2(startDateStr, endDateStr, taiKhoanCanXem) {
   const ui = SpreadsheetApp.getUi();
 
   try {
+    // Kiểm tra tham số đầu vào
+    if (!startDateStr || !endDateStr) {
+      throw new Error('Thiếu tham số ngày bắt đầu hoặc kết thúc');
+    }
+    
+    if (!taiKhoanCanXem || !Array.isArray(taiKhoanCanXem) || taiKhoanCanXem.length === 0) {
+      throw new Error('Thiếu danh sách tài khoản cần xem');
+    }
+
     const ngayBatDau = new Date(startDateStr);
     ngayBatDau.setHours(0, 0, 0, 0);
     const ngayKetThuc = new Date(endDateStr);
     ngayKetThuc.setHours(23, 59, 59, 999);
+    
+    console.log(`📅 Tạo báo cáo sổ chi tiết cho ${taiKhoanCanXem.length} tài khoản từ ${ngayBatDau.toLocaleDateString('vi-VN')} đến ${ngayKetThuc.toLocaleDateString('vi-VN')}`);
 
     // Các bước còn lại giống hệt hàm cũ
     const sheetSoCT = ss.getSheetByName('SO_CT');
@@ -1421,7 +1522,17 @@ function getAccountsForSidebar() {
 }
 
 /**
- * Hàm mới để mở sidebar Sổ chi tiết
+ * Hàm mới để mở sidebar Unified - Bảng điều khiển tổng hợp
+ */
+function moSidebarUnified() {
+  const html = HtmlService.createHtmlOutputFromFile('SidebarUnified')
+    .setWidth(450)
+    .setTitle('🚀 Kế Toán Pro - Bảng Điều Khiển');
+  SpreadsheetApp.getUi().showSidebar(html);
+}
+
+/**
+ * Hàm mới để mở sidebar Sổ chi tiết (giữ lại để tương thích)
  */
 function moSidebarSoChiTiet() {
   const html = HtmlService.createHtmlOutputFromFile('sidebarSoChiTiet')
@@ -1569,4 +1680,53 @@ function saveRecentAccount(maTK) {
 function clearAccountCache() {
   CacheService.getScriptCache().remove('DANH_SACH_TAI_KHOAN');
   console.log('🧹 Account cache cleared.');
+}
+
+/**
+ * Hàm lấy danh sách tài khoản gần đây
+ */
+function getRecentAccounts() {
+  try {
+    const properties = PropertiesService.getDocumentProperties();
+    const recentData = properties.getProperty('RECENT_ACCOUNTS');
+    if (recentData) {
+      return JSON.parse(recentData);
+    }
+    return [];
+  } catch (error) {
+    console.error('Lỗi lấy tài khoản gần đây:', error.toString());
+    return [];
+  }
+}
+
+/**
+ * Hàm lưu ngày báo cáo vào Properties Service
+ */
+function saveReportDates(startDate, endDate) {
+  try {
+    const properties = PropertiesService.getDocumentProperties();
+    const datesData = { startDate, endDate };
+    properties.setProperty('REPORT_DATES', JSON.stringify(datesData));
+    return true;
+  } catch (error) {
+    console.error('Lỗi lưu ngày báo cáo:', error.toString());
+    return false;
+  }
+}
+
+/**
+ * Hàm lấy ngày báo cáo từ Properties Service
+ */
+function getReportDates() {
+  try {
+    const properties = PropertiesService.getDocumentProperties();
+    const datesData = properties.getProperty('REPORT_DATES');
+    if (datesData) {
+      return JSON.parse(datesData);
+    }
+    return null;
+  } catch (error) {
+    console.error('Lỗi lấy ngày báo cáo:', error.toString());
+    return null;
+  }
 }
