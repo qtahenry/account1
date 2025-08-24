@@ -1285,11 +1285,11 @@ function findDirectChildAccounts(parentAccount, allAccounts) {
   const children = [];
   const parentPattern = parentAccount;
   
-  // Tìm tài khoản con TRỰC TIẾP (chỉ cấp ngay dưới)
+  // Tìm TẤT CẢ tài khoản con (mọi cấp)
   allAccounts.forEach(acc => {
     if (acc.ma !== parentAccount && acc.ma.startsWith(parentPattern)) {
-      // Kiểm tra xem có phải con trực tiếp không
-      if (isDirectChild(parentAccount, acc.ma)) {
+      // Kiểm tra xem có phải con không (mọi cấp)
+      if (isChildAccount(parentAccount, acc.ma)) {
         children.push(acc);
       }
     }
@@ -1325,7 +1325,7 @@ function isDirectChild(parentAccount, childAccount) {
 }
 
 /**
- * HÀM PHỤ: Tìm tài khoản con sử dụng index (SỬA LẠI - CHỈ TÌM CON TRỰC TIẾP)
+ * HÀM PHỤ: Tìm tài khoản con sử dụng index (SỬA LẠI - TÌM TẤT CẢ CÁC CẤP CON)
  */
 function findChildAccountsOptimized(parentAccount, accountIndex) {
   const children = [];
@@ -1336,7 +1336,7 @@ function findChildAccountsOptimized(parentAccount, accountIndex) {
     const potentialChildren = accountIndex.get(parentPattern);
     
     potentialChildren.forEach(acc => {
-      if (acc.ma !== parentAccount && isDirectChild(parentAccount, acc.ma)) {
+      if (acc.ma !== parentAccount && isChildAccount(parentAccount, acc.ma)) {
         children.push(acc);
       }
     });
@@ -1346,7 +1346,7 @@ function findChildAccountsOptimized(parentAccount, accountIndex) {
 }
 
 /**
- * HÀM PHỤ: Tìm tài khoản con của một tài khoản cha (SỬA LẠI - CHỈ TÌM CON TRỰC TIẾP)
+ * HÀM PHỤ: Tìm tài khoản con của một tài khoản cha (SỬA LẠI - TÌM TẤT CẢ CÁC CẤP CON)
  */
 function findChildAccounts(parentAccount, allAccounts, hierarchy) {
   return findDirectChildAccounts(parentAccount, allAccounts);
@@ -1393,8 +1393,8 @@ function tinhSoDuDauKyDongChoTaiKhoanDonLe(taiKhoan, allTransactions, ngayBatDau
 }
 
 /**
- * HÀM PHỤ: Tính số dư đầu kỳ động cho tài khoản cha (bao gồm tài khoản con TRỰC TIẾP)
- * SỬA LẠI: Chỉ tính con trực tiếp, không tính con cháu xa
+ * HÀM PHỤ: Tính số dư đầu kỳ động cho tài khoản cha (bao gồm TẤT CẢ các cấp con)
+ * SỬA LẠI: Tính tất cả các cấp con, không chỉ con trực tiếp
  */
 function tinhSoDuDauKyDongChoTaiKhoanCha(parentAccount, childAccounts, allTransactions, ngayBatDau, taiKhoanMap) {
   let duNo = 0;
@@ -1407,7 +1407,7 @@ function tinhSoDuDauKyDongChoTaiKhoanCha(parentAccount, childAccounts, allTransa
     duCo += parentInfo.duCoGoc;
   }
   
-  // 2. Số dư gốc của tất cả tài khoản con TRỰC TIẾP
+  // 2. Số dư gốc của TẤT CẢ tài khoản con (mọi cấp)
   childAccounts.forEach(child => {
     const childInfo = taiKhoanMap.get(child.ma);
     if (childInfo) {
@@ -1416,7 +1416,7 @@ function tinhSoDuDauKyDongChoTaiKhoanCha(parentAccount, childAccounts, allTransa
     }
   });
   
-  // 3. Cộng tất cả giao dịch TRƯỚC kỳ báo cáo (CHỈ tính cho tài khoản cha và con TRỰC TIẾP)
+  // 3. Cộng tất cả giao dịch TRƯỚC kỳ báo cáo (tính cho tài khoản cha và TẤT CẢ con)
   allTransactions.forEach(trans => {
     if (new Date(trans.NGAY_HT) < ngayBatDau) {
       // Giao dịch liên quan đến tài khoản cha
@@ -1427,11 +1427,11 @@ function tinhSoDuDauKyDongChoTaiKhoanCha(parentAccount, childAccounts, allTransa
         duCo += trans.SO_TIEN; // Tăng dư có
       }
       
-      // Giao dịch liên quan đến tài khoản con TRỰC TIẾP (không tính con cháu xa)
-      if (isDirectChild(parentAccount, trans.TK_NO)) {
+      // Giao dịch liên quan đến TẤT CẢ tài khoản con (mọi cấp)
+      if (isChildAccount(parentAccount, trans.TK_NO)) {
         duNo += trans.SO_TIEN; // Tăng dư nợ
       }
-      if (isDirectChild(parentAccount, trans.TK_CO)) {
+      if (isChildAccount(parentAccount, trans.TK_CO)) {
         duCo += trans.SO_TIEN; // Tăng dư có
       }
     }
@@ -1445,7 +1445,7 @@ function tinhSoDuDauKyDongChoTaiKhoanCha(parentAccount, childAccounts, allTransa
  * HÀM PHỤ: Tính số dư đầu kỳ động cho tài khoản (SỬA LẠI - GỌI ĐÚNG FUNCTION)
  */
 function tinhSoDuDauKyDongChoTaiKhoan(parentAccount, childAccounts, allTransactions, ngayBatDau, taiKhoanMap) {
-  // Nếu có tài khoản con TRỰC TIẾP -> gọi function tổng hợp
+  // Nếu có tài khoản con (mọi cấp) -> gọi function tổng hợp
   if (childAccounts.length > 0) {
     return tinhSoDuDauKyDongChoTaiKhoanCha(parentAccount, childAccounts, allTransactions, ngayBatDau, taiKhoanMap);
   }
@@ -2460,7 +2460,7 @@ function findChildAccountsOptimized(parentAccount, accountIndex) {
     const potentialChildren = accountIndex.get(parentPattern);
     
     potentialChildren.forEach(acc => {
-      if (acc.ma !== parentAccount && isDirectChild(parentAccount, acc.ma)) {
+      if (acc.ma !== parentAccount && isChildAccount(parentAccount, acc.ma)) {
         children.push(acc);
       }
     });
