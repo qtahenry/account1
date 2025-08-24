@@ -1058,10 +1058,7 @@ function taoNhapXuatTon() {
     }
   }
   
-  // BƯỚC 2: Xử lý dữ liệu phát sinh từ TẤT CẢ CÁC SHEET DL_*
-  let tongGiaoDichTruocKy = 0;
-  let tongGiaoDichTrongKy = 0;
-  let giaoDichKhongLienQuan = 0;
+  
   let giaoDichKhongKhopLoc = 0;
   
   for (let i = 0; i < combinedData.length; i++) {
@@ -1633,20 +1630,78 @@ function determineAccountLevel(maTK, loai) {
 }
 
 /**
- * HÀM PHỤ: Tìm tài khoản con của một tài khoản cha
+ * HÀM PHỤ: Tìm tài khoản con TRỰC TIẾP của một tài khoản cha (SỬA LẠI)
+ * Chỉ tìm tài khoản con cấp ngay dưới, không tìm tài khoản con cấp thấp hơn
  */
-function findChildAccounts(parentAccount, allAccounts, hierarchy) {
+function findDirectChildAccounts(parentAccount, allAccounts) {
   const children = [];
   const parentPattern = parentAccount;
   
-  // Tìm tài khoản con dựa vào pattern bắt đầu
+  // Tìm tài khoản con TRỰC TIẾP (chỉ cấp ngay dưới)
   allAccounts.forEach(acc => {
     if (acc.ma !== parentAccount && acc.ma.startsWith(parentPattern)) {
-      children.push(acc);
+      // Kiểm tra xem có phải con trực tiếp không
+      if (isDirectChild(parentAccount, acc.ma)) {
+        children.push(acc);
+      }
     }
   });
   
   return children;
+}
+
+/**
+ * HÀM PHỤ: Kiểm tra xem một tài khoản có phải là con TRỰC TIẾP không
+ */
+function isDirectChild(parentAccount, childAccount) {
+  // Nếu tài khoản cha có 3 ký tự (cấp 1)
+  if (parentAccount.length === 3) {
+    // Con trực tiếp phải có 4 ký tự và bắt đầu bằng 3 ký tự của cha
+    return childAccount.length === 4 && childAccount.startsWith(parentAccount);
+  }
+  
+  // Nếu tài khoản cha có 4 ký tự (cấp 2)
+  if (parentAccount.length === 4) {
+    // Con trực tiếp phải có 5 ký tự và bắt đầu bằng 4 ký tự của cha
+    return childAccount.length === 5 && childAccount.startsWith(parentAccount);
+  }
+  
+  // Nếu tài khoản cha có 5 ký tự (cấp 3)
+  if (parentAccount.length === 5) {
+    // Con trực tiếp phải có 6 ký tự và bắt đầu bằng 5 ký tự của cha
+    return childAccount.length === 6 && childAccount.startsWith(parentAccount);
+  }
+  
+  // Các cấp khác: con trực tiếp phải dài hơn cha 1 ký tự
+  return childAccount.length === parentAccount.length + 1 && childAccount.startsWith(parentAccount);
+}
+
+/**
+ * HÀM PHỤ: Tìm tài khoản con sử dụng index (SỬA LẠI - CHỈ TÌM CON TRỰC TIẾP)
+ */
+function findChildAccountsOptimized(parentAccount, accountIndex) {
+  const children = [];
+  const parentPattern = parentAccount;
+  
+  // Sử dụng index để tìm kiếm nhanh
+  if (accountIndex.has(parentPattern)) {
+    const potentialChildren = accountIndex.get(parentPattern);
+    
+    potentialChildren.forEach(acc => {
+      if (acc.ma !== parentAccount && isDirectChild(parentAccount, acc.ma)) {
+        children.push(acc);
+      }
+    });
+  }
+  
+  return children;
+}
+
+/**
+ * HÀM PHỤ: Tìm tài khoản con của một tài khoản cha (SỬA LẠI - CHỈ TÌM CON TRỰC TIẾP)
+ */
+function findChildAccounts(parentAccount, allAccounts, hierarchy) {
+  return findDirectChildAccounts(parentAccount, allAccounts);
 }
 
 /**
@@ -1690,8 +1745,8 @@ function tinhSoDuDauKyDongChoTaiKhoanDonLe(taiKhoan, allTransactions, ngayBatDau
 }
 
 /**
- * HÀM PHỤ: Tính số dư đầu kỳ động cho tài khoản cha (bao gồm tài khoản con)
- * SỬA LẠI: Chỉ gọi khi thực sự cần tổng hợp từ tài khoản con
+ * HÀM PHỤ: Tính số dư đầu kỳ động cho tài khoản cha (bao gồm tài khoản con TRỰC TIẾP)
+ * SỬA LẠI: Chỉ tính con trực tiếp, không tính con cháu xa
  */
 function tinhSoDuDauKyDongChoTaiKhoanCha(parentAccount, childAccounts, allTransactions, ngayBatDau, taiKhoanMap) {
   let duNo = 0;
@@ -1704,7 +1759,7 @@ function tinhSoDuDauKyDongChoTaiKhoanCha(parentAccount, childAccounts, allTransa
     duCo += parentInfo.duCoGoc;
   }
   
-  // 2. Số dư gốc của tất cả tài khoản con
+  // 2. Số dư gốc của tất cả tài khoản con TRỰC TIẾP
   childAccounts.forEach(child => {
     const childInfo = taiKhoanMap.get(child.ma);
     if (childInfo) {
@@ -1713,7 +1768,7 @@ function tinhSoDuDauKyDongChoTaiKhoanCha(parentAccount, childAccounts, allTransa
     }
   });
   
-  // 3. Cộng tất cả giao dịch TRƯỚC kỳ báo cáo (SỬA LẠI LOGIC)
+  // 3. Cộng tất cả giao dịch TRƯỚC kỳ báo cáo (CHỈ tính cho tài khoản cha và con TRỰC TIẾP)
   allTransactions.forEach(trans => {
     if (new Date(trans.NGAY_HT) < ngayBatDau) {
       // Giao dịch liên quan đến tài khoản cha
@@ -1724,11 +1779,11 @@ function tinhSoDuDauKyDongChoTaiKhoanCha(parentAccount, childAccounts, allTransa
         duCo += trans.SO_TIEN; // Tăng dư có
       }
       
-      // Giao dịch liên quan đến tài khoản con
-      if (isAccountInHierarchy(trans.TK_NO, parentAccount, childAccounts)) {
+      // Giao dịch liên quan đến tài khoản con TRỰC TIẾP (không tính con cháu xa)
+      if (isDirectChild(parentAccount, trans.TK_NO)) {
         duNo += trans.SO_TIEN; // Tăng dư nợ
       }
-      if (isAccountInHierarchy(trans.TK_CO, parentAccount, childAccounts)) {
+      if (isDirectChild(parentAccount, trans.TK_CO)) {
         duCo += trans.SO_TIEN; // Tăng dư có
       }
     }
@@ -1742,7 +1797,7 @@ function tinhSoDuDauKyDongChoTaiKhoanCha(parentAccount, childAccounts, allTransa
  * HÀM PHỤ: Tính số dư đầu kỳ động cho tài khoản (SỬA LẠI - GỌI ĐÚNG FUNCTION)
  */
 function tinhSoDuDauKyDongChoTaiKhoan(parentAccount, childAccounts, allTransactions, ngayBatDau, taiKhoanMap) {
-  // Nếu có tài khoản con -> gọi function tổng hợp
+  // Nếu có tài khoản con TRỰC TIẾP -> gọi function tổng hợp
   if (childAccounts.length > 0) {
     return tinhSoDuDauKyDongChoTaiKhoanCha(parentAccount, childAccounts, allTransactions, ngayBatDau, taiKhoanMap);
   }
@@ -2385,7 +2440,7 @@ function findChildAccountsOptimized(parentAccount, accountIndex) {
     const potentialChildren = accountIndex.get(parentPattern);
     
     potentialChildren.forEach(acc => {
-      if (acc.ma !== parentAccount && acc.ma.startsWith(parentPattern)) {
+      if (acc.ma !== parentAccount && isDirectChild(parentAccount, acc.ma)) {
         children.push(acc);
       }
     });
@@ -2654,4 +2709,102 @@ function createProcessingSummary(taiKhoanCanXem, childAccountsMap, processingTim
   
   console.log(`📈 Tổng số tài khoản con được xử lý: ${totalChildAccounts}`);
   console.log('✅ Hoàn thành xử lý!\n');
+}
+
+/**
+ * HÀM PHỤ: Test logic phân cấp tài khoản (để kiểm tra không có tính trùng lặp)
+ */
+function testAccountHierarchyLogic() {
+  console.log('🧪 TEST LOGIC PHÂN CẤP TÀI KHOẢN:');
+  
+  // Test case 1: Tài khoản cấp 1
+  console.log('\n📋 Test TK 111 (cấp 1):');
+  const testAccounts1 = [
+    { ma: '111', ten: 'Tiền mặt' },
+    { ma: '1111', ten: 'Tiền mặt VND' },
+    { ma: '1112', ten: 'Tiền mặt USD' },
+    { ma: '11111', ten: 'Tiền mặt VND chính' },
+    { ma: '11112', ten: 'Tiền mặt VND phụ' },
+    { ma: '11121', ten: 'Tiền mặt USD chính' },
+    { ma: '11122', ten: 'Tiền mặt USD phụ' }
+  ];
+  
+  const children111 = findDirectChildAccounts('111', testAccounts1);
+  console.log('   - Con trực tiếp của 111:', children111.map(c => c.ma).join(', '));
+  console.log('   - Kết quả mong đợi: 1111, 1112');
+  
+  // Test case 2: Tài khoản cấp 2
+  console.log('\n📋 Test TK 1111 (cấp 2):');
+  const children1111 = findDirectChildAccounts('1111', testAccounts1);
+  console.log('   - Con trực tiếp của 1111:', children1111.map(c => c.ma).join(', '));
+  console.log('   - Kết quả mong đợi: 11111, 11112');
+  
+  // Test case 3: Tài khoản cấp 3
+  console.log('\n📋 Test TK 11111 (cấp 3):');
+  const children11111 = findDirectChildAccounts('11111', testAccounts1);
+  console.log('   - Con trực tiếp của 11111:', children11111.map(c => c.ma).join(', '));
+  console.log('   - Kết quả mong đợi: (không có)');
+  
+  // Test case 4: Kiểm tra tính trùng lặp
+  console.log('\n📋 Kiểm tra tính trùng lặp:');
+  const allChildren111 = getAllDescendants('111', testAccounts1);
+  const allChildren1111 = getAllDescendants('1111', testAccounts1);
+  const allChildren11111 = getAllDescendants('11111', testAccounts1);
+  
+  console.log('   - Tất cả con cháu của 111:', allChildren111.map(c => c.ma).join(', '));
+  console.log('   - Tất cả con cháu của 1111:', allChildren1111.map(c => c.ma).join(', '));
+  console.log('   - Tất cả con cháu của 11111:', allChildren11111.map(c => c.ma).join(', '));
+  
+  // Kiểm tra xem có tài khoản nào bị tính trùng lặp không
+  const intersection = allChildren111.filter(acc => allChildren1111.includes(acc));
+  if (intersection.length > 0) {
+    console.log('   ⚠️ CẢNH BÁO: Có tài khoản bị tính trùng lặp:', intersection.map(c => c.ma).join(', '));
+  } else {
+    console.log('   ✅ Không có tài khoản bị tính trùng lặp');
+  }
+  
+  console.log('\n🎯 Test logic phân cấp hoàn thành!');
+}
+
+/**
+ * HÀM PHỤ: Lấy tất cả con cháu của một tài khoản (để test)
+ */
+function getAllDescendants(parentAccount, allAccounts) {
+  const descendants = [];
+  const directChildren = findDirectChildAccounts(parentAccount, allAccounts);
+  
+  descendants.push(...directChildren);
+  
+  directChildren.forEach(child => {
+    const grandChildren = getAllDescendants(child.ma, allAccounts);
+    descendants.push(...grandChildren);
+  });
+  
+  return descendants;
+}
+
+/**
+ * HÀM PHỤ: Kiểm tra xem một tài khoản có phải là con TRỰC TIẾP không
+ */
+function isDirectChild(parentAccount, childAccount) {
+  // Nếu tài khoản cha có 3 ký tự (cấp 1)
+  if (parentAccount.length === 3) {
+    // Con trực tiếp phải có 4 ký tự và bắt đầu bằng 3 ký tự của cha
+    return childAccount.length === 4 && childAccount.startsWith(parentAccount);
+  }
+  
+  // Nếu tài khoản cha có 4 ký tự (cấp 2)
+  if (parentAccount.length === 4) {
+    // Con trực tiếp phải có 5 ký tự và bắt đầu bằng 4 ký tự của cha
+    return childAccount.length === 5 && childAccount.startsWith(parentAccount);
+  }
+  
+  // Nếu tài khoản cha có 5 ký tự (cấp 3)
+  if (parentAccount.length === 5) {
+    // Con trực tiếp phải có 6 ký tự và bắt đầu bằng 5 ký tự của cha
+    return childAccount.length === 6 && childAccount.startsWith(parentAccount);
+  }
+  
+  // Các cấp khác: con trực tiếp phải dài hơn cha 1 ký tự
+  return childAccount.length === parentAccount.length + 1 && childAccount.startsWith(parentAccount);
 }
