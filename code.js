@@ -1658,10 +1658,42 @@ function isAccountInHierarchy(accountCode, parentAccount, childAccounts) {
 }
 
 /**
- * HÀM PHỤ: Tính số dư đầu kỳ động cho tài khoản cha (bao gồm tài khoản con)
- * ĐÃ SỬA LẠI: Tính toán chính xác theo tính chất tài khoản kế toán
+ * HÀM PHỤ: Tính số dư đầu kỳ động cho tài khoản đơn lẻ (KHÔNG có tài khoản con)
+ * SỬA LẠI: Chỉ tính cho tài khoản được yêu cầu, không tính trùng lặp
  */
-function tinhSoDuDauKyDongChoTaiKhoan(parentAccount, childAccounts, allTransactions, ngayBatDau, taiKhoanMap) {
+function tinhSoDuDauKyDongChoTaiKhoanDonLe(taiKhoan, allTransactions, ngayBatDau, taiKhoanMap) {
+  let duNo = 0;
+  let duCo = 0;
+  
+  // 1. Số dư gốc của tài khoản
+  const tkInfo = taiKhoanMap.get(taiKhoan);
+  if (tkInfo) {
+    duNo += tkInfo.duNoGoc;
+    duCo += tkInfo.duCoGoc;
+  }
+  
+  // 2. Cộng tất cả giao dịch TRƯỚC kỳ báo cáo (CHỈ tính cho tài khoản này)
+  allTransactions.forEach(trans => {
+    if (new Date(trans.NGAY_HT) < ngayBatDau) {
+      // Giao dịch liên quan đến tài khoản được yêu cầu
+      if (trans.TK_NO === taiKhoan) {
+        duNo += trans.SO_TIEN; // Tăng dư nợ
+      }
+      if (trans.TK_CO === taiKhoan) {
+        duCo += trans.SO_TIEN; // Tăng dư có
+      }
+    }
+  });
+  
+  // 3. Tính số dư động đầu kỳ theo tính chất tài khoản
+  return tinhSoDuDongDauKy(duNo, duCo);
+}
+
+/**
+ * HÀM PHỤ: Tính số dư đầu kỳ động cho tài khoản cha (bao gồm tài khoản con)
+ * SỬA LẠI: Chỉ gọi khi thực sự cần tổng hợp từ tài khoản con
+ */
+function tinhSoDuDauKyDongChoTaiKhoanCha(parentAccount, childAccounts, allTransactions, ngayBatDau, taiKhoanMap) {
   let duNo = 0;
   let duCo = 0;
   
@@ -1702,8 +1734,21 @@ function tinhSoDuDauKyDongChoTaiKhoan(parentAccount, childAccounts, allTransacti
     }
   });
   
-  // 4. Tính số dư động đầu kỳ theo tính chất tài khoản (SỬA LẠI)
+  // 4. Tính số dư động đầu kỳ theo tính chất tài khoản
   return tinhSoDuDongDauKy(duNo, duCo);
+}
+
+/**
+ * HÀM PHỤ: Tính số dư đầu kỳ động cho tài khoản (SỬA LẠI - GỌI ĐÚNG FUNCTION)
+ */
+function tinhSoDuDauKyDongChoTaiKhoan(parentAccount, childAccounts, allTransactions, ngayBatDau, taiKhoanMap) {
+  // Nếu có tài khoản con -> gọi function tổng hợp
+  if (childAccounts.length > 0) {
+    return tinhSoDuDauKyDongChoTaiKhoanCha(parentAccount, childAccounts, allTransactions, ngayBatDau, taiKhoanMap);
+  }
+  
+  // Nếu không có tài khoản con -> gọi function đơn lẻ
+  return tinhSoDuDauKyDongChoTaiKhoanDonLe(parentAccount, allTransactions, ngayBatDau, taiKhoanMap);
 }
 
 /**
@@ -2527,15 +2572,19 @@ function removeDuplicateTransactions(transactions) {
 }
 
 /**
- * HÀM PHỤ: Tính toán số dư động đầu kỳ chi tiết (DEBUG)
+ * HÀM PHỤ: Tính toán số dư động đầu kỳ chi tiết (DEBUG) - SỬA LẠI
  */
 function debugSoDuDauKy(parentAccount, childAccounts, allTransactions, ngayBatDau, taiKhoanMap) {
-  console.log(`🔍 DEBUG SỐ DƯ ĐẦU KỲ CHO TÀI KHOẢN ${parentAccount}:`);
+  if (childAccounts.length > 0) {
+    console.log(`🔍 DEBUG SỐ DƯ ĐẦU KỲ CHO TÀI KHOẢN CHA ${parentAccount} (TỔNG HỢP TỪ ${childAccounts.length} TÀI KHOẢN CON):`);
+  } else {
+    console.log(`🔍 DEBUG SỐ DƯ ĐẦU KỲ CHO TÀI KHOẢN ĐƠN LẺ ${parentAccount}:`);
+  }
   
   let duNo = 0;
   let duCo = 0;
   
-  // 1. Số dư gốc
+  // 1. Số dư gốc của tài khoản chính
   const parentInfo = taiKhoanMap.get(parentAccount);
   if (parentInfo) {
     console.log(`   - Số dư gốc TK ${parentAccount}: Nợ ${parentInfo.duNoGoc}, Có ${parentInfo.duCoGoc}`);
@@ -2543,15 +2592,17 @@ function debugSoDuDauKy(parentAccount, childAccounts, allTransactions, ngayBatDa
     duCo += parentInfo.duCoGoc;
   }
   
-  // 2. Số dư gốc tài khoản con
-  childAccounts.forEach(child => {
-    const childInfo = taiKhoanMap.get(child.ma);
-    if (childInfo) {
-      console.log(`   - Số dư gốc TK ${child.ma}: Nợ ${childInfo.duNoGoc}, Có ${childInfo.duCoGoc}`);
-      duNo += childInfo.duNoGoc;
-      duCo += childInfo.duCoGoc;
-    }
-  });
+  // 2. Số dư gốc của tất cả tài khoản con (nếu có)
+  if (childAccounts.length > 0) {
+    childAccounts.forEach(child => {
+      const childInfo = taiKhoanMap.get(child.ma);
+      if (childInfo) {
+        console.log(`   - Số dư gốc TK ${child.ma}: Nợ ${childInfo.duNoGoc}, Có ${childInfo.duCoGoc}`);
+        duNo += childInfo.duNoGoc;
+        duCo += childInfo.duCoGoc;
+      }
+    });
+  }
   
   console.log(`   - Tổng số dư gốc: Nợ ${duNo}, Có ${duCo}`);
   
