@@ -1370,13 +1370,10 @@ function taoSoChiTietTaiKhoan_V2(startDateStr, endDateStr, taiKhoanCanXem) {
   const ui = SpreadsheetApp.getUi();
 
   try {
-    // Kiểm tra tham số đầu vào
-    if (!startDateStr || !endDateStr) {
-      throw new Error('Thiếu tham số ngày bắt đầu hoặc kết thúc');
-    }
-    
-    if (!taiKhoanCanXem || !Array.isArray(taiKhoanCanXem) || taiKhoanCanXem.length === 0) {
-      throw new Error('Thiếu danh sách tài khoản cần xem');
+    // Kiểm tra tham số đầu vào (SỬA LẠI)
+    const validationErrors = validateInputData(startDateStr, endDateStr, taiKhoanCanXem);
+    if (validationErrors.length > 0) {
+      throw new Error('Lỗi validation: ' + validationErrors.join(', '));
     }
 
     const ngayBatDau = new Date(startDateStr);
@@ -1458,8 +1455,13 @@ function taoSoChiTietTaiKhoan_V2(startDateStr, endDateStr, taiKhoanCanXem) {
       outputData.push([titleRow, '', '', '', '', '', '', '', '']);
       outputData.push(headers);
 
-      // Tính số dư đầu kỳ động (GIỮ NGUYÊN LOGIC HIỆN TẠI)
+      // Tính số dư đầu kỳ động (SỬA LẠI LOGIC)
       let [duNoDauKy, duCoDauKy] = tinhSoDuDauKyDongChoTaiKhoan(tk, childAccounts, optimizedTransactions, ngayBatDau, taiKhoanMap);
+      
+      // Debug số dư đầu kỳ (có thể bỏ sau khi test xong)
+      if (childAccounts.length > 0) {
+        debugSoDuDauKy(tk, childAccounts, optimizedTransactions, ngayBatDau, taiKhoanMap);
+      }
       outputData.push(['', '', '', 'Số dư đầu kỳ', '', '', '', duNoDauKy, duCoDauKy]);
 
       let duNoCuoiKy = duNoDauKy;
@@ -1470,40 +1472,40 @@ function taoSoChiTietTaiKhoan_V2(startDateStr, endDateStr, taiKhoanCanXem) {
       // Lấy giao dịch trong kỳ báo cáo (bao gồm tài khoản cha và con)
       const transactionsInPeriod = getTransactionsForParentAccount(tk, childAccounts, optimizedTransactions, ngayBatDau, ngayKetThuc);
 
-      transactionsInPeriod.forEach(trans => {
-          const phatSinhNo = (trans.TK_NO === tk) ? trans.SO_TIEN : 0;
-          const phatSinhCo = (trans.TK_CO === tk) ? trans.SO_TIEN : 0;
-          const tkDoiUng = (trans.TK_NO === tk) ? trans.TK_CO : trans.TK_NO;
+            transactionsInPeriod.forEach(trans => {
+            const phatSinhNo = (trans.TK_NO === tk) ? trans.SO_TIEN : 0;
+            const phatSinhCo = (trans.TK_CO === tk) ? trans.SO_TIEN : 0;
+            const tkDoiUng = (trans.TK_NO === tk) ? trans.TK_CO : trans.TK_NO;
 
-          // Tính toán phát sinh tổng hợp từ tài khoản cha và con
-          const [totalPhatSinhNo, totalPhatSinhCo] = calculateAggregatedPhatSinh(trans, tk, childAccounts);
+            // Tính toán phát sinh tổng hợp từ tài khoản cha và con (SỬA LẠI)
+            const [totalPhatSinhNo, totalPhatSinhCo] = calculateAggregatedPhatSinh(trans, tk, childAccounts);
 
-          tongPhatSinhNo += totalPhatSinhNo;
-          tongPhatSinhCo += totalPhatSinhCo;
+            tongPhatSinhNo += totalPhatSinhNo;
+            tongPhatSinhCo += totalPhatSinhCo;
 
-          let finalDienGiai = trans.DIEN_GIAI || '';
-          const tenHang = trans.TEN_HANG?.toString().trim();
-          const quyCach = trans.QUY_CACH?.toString().trim();
-          if (tenHang) finalDienGiai += ` - ${tenHang}`;
-          if (quyCach) finalDienGiai += ` (${quyCach})`;
+            let finalDienGiai = trans.DIEN_GIAI || '';
+            const tenHang = trans.TEN_HANG?.toString().trim();
+            const quyCach = trans.QUY_CACH?.toString().trim();
+            if (tenHang) finalDienGiai += ` - ${tenHang}`;
+            if (quyCach) finalDienGiai += ` (${quyCach})`;
 
-          // Cập nhật số dư cuối kỳ (GIỮ NGUYÊN LOGIC HIỆN TẠI)
-          let duNoMoi = duNoCuoiKy + totalPhatSinhNo;
-          let duCoMoi = duCoCuoiKy + totalPhatSinhCo;
-          [duNoCuoiKy, duCoCuoiKy] = tinhSoDu(duNoMoi, duCoMoi);
+            // Cập nhật số dư cuối kỳ (GIỮ NGUYÊN LOGIC HIỆN TẠI)
+            let duNoMoi = duNoCuoiKy + totalPhatSinhNo;
+            let duCoMoi = duCoCuoiKy + totalPhatSinhCo;
+            [duNoCuoiKy, duCoCuoiKy] = tinhSoDu(duNoMoi, duCoMoi);
 
-          outputData.push([ 
-            new Date(trans.NGAY_HT), 
-            trans.SO_CT || '', 
-            trans.NGAY_CT ? new Date(trans.NGAY_CT) : '', 
-            finalDienGiai, 
-            tkDoiUng, 
-            totalPhatSinhNo, 
-            totalPhatSinhCo, 
-            duNoCuoiKy, 
-            duCoCuoiKy 
-          ]);
-        });
+            outputData.push([ 
+              new Date(trans.NGAY_HT), 
+              trans.SO_CT || '', 
+              trans.NGAY_CT ? new Date(trans.NGAY_CT) : '', 
+              finalDienGiai, 
+              tkDoiUng, 
+              totalPhatSinhNo, 
+              totalPhatSinhCo, 
+              duNoCuoiKy, 
+              duCoCuoiKy 
+            ]);
+          });
 
       outputData.push(['', '', '', 'Cộng phát sinh trong kỳ', '', tongPhatSinhNo, tongPhatSinhCo, '', '']);
       outputData.push(['', '', '', 'Số dư cuối kỳ', '', '', '', duNoCuoiKy, duCoCuoiKy]);
@@ -1539,6 +1541,16 @@ function taoSoChiTietTaiKhoan_V2(startDateStr, endDateStr, taiKhoanCanXem) {
     }
 
     ss.toast('Hoàn thành!', 'Thành công', 5);
+    
+    // Tạo báo cáo tóm tắt quá trình xử lý
+    const totalProcessingTime = Date.now() - startTime;
+    const childAccountsMap = new Map();
+    taiKhoanCanXem.forEach(tk => {
+      const childAccounts = findChildAccountsOptimized(tk, accountIndex);
+      childAccountsMap.set(tk, childAccounts);
+    });
+    createProcessingSummary(taiKhoanCanXem, childAccountsMap, totalProcessingTime);
+    
     // Không cần alert nữa vì người dùng vẫn ở trên sidebar
   } catch (e) {
     console.error("LỖI TẠO SỔ CHI TIẾT: " + e.toString() + e.stack);
@@ -1613,7 +1625,7 @@ function isAccountInHierarchy(accountCode, parentAccount, childAccounts) {
 
 /**
  * HÀM PHỤ: Tính số dư đầu kỳ động cho tài khoản cha (bao gồm tài khoản con)
- * GIỮ NGUYÊN LOGIC TÍNH TOÁN HIỆN TẠI
+ * ĐÃ SỬA LẠI: Tính toán chính xác theo tính chất tài khoản kế toán
  */
 function tinhSoDuDauKyDongChoTaiKhoan(parentAccount, childAccounts, allTransactions, ngayBatDau, taiKhoanMap) {
   let duNo = 0;
@@ -1635,24 +1647,139 @@ function tinhSoDuDauKyDongChoTaiKhoan(parentAccount, childAccounts, allTransacti
     }
   });
   
-  // 3. Cộng tất cả giao dịch TRƯỚC kỳ báo cáo (GIỮ NGUYÊN LOGIC HIỆN TẠI)
+  // 3. Cộng tất cả giao dịch TRƯỚC kỳ báo cáo (SỬA LẠI LOGIC)
   allTransactions.forEach(trans => {
     if (new Date(trans.NGAY_HT) < ngayBatDau) {
       // Giao dịch liên quan đến tài khoản cha
-      if (trans.TK_NO === parentAccount) duNo += trans.SO_TIEN;
-      if (trans.TK_CO === parentAccount) duCo += trans.SO_TIEN;
+      if (trans.TK_NO === parentAccount) {
+        duNo += trans.SO_TIEN; // Tăng dư nợ
+      }
+      if (trans.TK_CO === parentAccount) {
+        duCo += trans.SO_TIEN; // Tăng dư có
+      }
       
       // Giao dịch liên quan đến tài khoản con
       if (isAccountInHierarchy(trans.TK_NO, parentAccount, childAccounts)) {
-        duNo += trans.SO_TIEN;
+        duNo += trans.SO_TIEN; // Tăng dư nợ
       }
       if (isAccountInHierarchy(trans.TK_CO, parentAccount, childAccounts)) {
-        duCo += trans.SO_TIEN;
+        duCo += trans.SO_TIEN; // Tăng dư có
       }
     }
   });
   
-  return [duNo, duCo];
+  // 4. Tính số dư động đầu kỳ theo tính chất tài khoản (SỬA LẠI)
+  return tinhSoDuDongDauKy(duNo, duCo);
+}
+
+/**
+ * HÀM PHỤ: Tính số dư động đầu kỳ theo tính chất tài khoản kế toán
+ * SỬA LẠI: Logic tính toán chính xác
+ */
+function tinhSoDuDongDauKy(duNo, duCo) {
+  // Nếu cả dư nợ và dư có đều = 0
+  if (duNo === 0 && duCo === 0) {
+    return [0, 0];
+  }
+  
+  // Nếu chỉ có dư nợ
+  if (duNo > 0 && duCo === 0) {
+    return [duNo, 0];
+  }
+  
+  // Nếu chỉ có dư có
+  if (duCo > 0 && duNo === 0) {
+    return [0, duCo];
+  }
+  
+  // Nếu cả dư nợ và dư có đều > 0 (có phát sinh trái dấu)
+  if (duNo > 0 && duCo > 0) {
+    if (duNo > duCo) {
+      return [duNo - duCo, 0]; // Dư nợ
+    } else {
+      return [0, duCo - duNo]; // Dư có
+    }
+  }
+  
+  // Trường hợp âm (không nên xảy ra trong thực tế)
+  if (duNo < 0) {
+    return [0, Math.abs(duNo)];
+  }
+  if (duCo < 0) {
+    return [Math.abs(duCo), 0];
+  }
+  
+  return [0, 0];
+}
+
+/**
+ * HÀM PHỤ: Xác định tính chất tài khoản kế toán
+ */
+function getAccountNature(maTK) {
+  const firstDigit = maTK.charAt(0);
+  
+  // Tài khoản dư nợ (Tài sản, Chi phí)
+  if (['1', '2', '6', '8'].includes(firstDigit)) {
+    return 'NO'; // Dư nợ
+  }
+  
+  // Tài khoản dư có (Nguồn vốn, Doanh thu)
+  if (['3', '4', '5', '7'].includes(firstDigit)) {
+    return 'CO'; // Dư có
+  }
+  
+  // Mặc định
+  return 'NO';
+}
+
+/**
+ * HÀM PHỤ: Tính toán số dư cuối kỳ với xử lý giao dịch nội bộ (SỬA LẠI)
+ */
+function calculateFinalBalanceWithInternalHandling(parentAccount, childAccounts, duNoDauKy, duCoDauKy, transactionsInPeriod) {
+  let duNoCuoiKy = duNoDauKy;
+  let duCoCuoiKy = duCoDauKy;
+  
+  // Xử lý giao dịch nội bộ
+  const filteredTransactions = handleInternalTransactions(transactionsInPeriod, parentAccount, childAccounts);
+  
+  filteredTransactions.forEach(trans => {
+    const [phatSinhNo, phatSinhCo] = calculateAggregatedPhatSinh(trans, parentAccount, childAccounts);
+    
+    // Cập nhật số dư cuối kỳ (GIỮ NGUYÊN LOGIC HIỆN TẠI)
+    let duNoMoi = duNoCuoiKy + phatSinhNo;
+    let duCoMoi = duCoCuoiKy + phatSinhCo;
+    [duNoCuoiKy, duCoCuoiKy] = tinhSoDu(duNoMoi, duCoMoi);
+  });
+  
+  return [duNoCuoiKy, duCoCuoiKy];
+}
+
+/**
+ * HÀM PHỤ: Tính toán phát sinh tổng hợp từ tài khoản cha và con (SỬA LẠI)
+ */
+function calculateAggregatedPhatSinh(trans, parentAccount, childAccounts) {
+  let phatSinhNo = 0;
+  let phatSinhCo = 0;
+  
+  // Phát sinh từ tài khoản cha
+  if (trans.TK_NO === parentAccount) phatSinhNo += trans.SO_TIEN;
+  if (trans.TK_CO === parentAccount) phatSinhCo += trans.SO_TIEN;
+  
+  // Phát sinh từ tài khoản con (CHỈ TÍNH KHI KHÔNG PHẢI GIAO DỊCH NỘI BỘ)
+  if (childAccounts.length > 0) {
+    const isInternalNo = isAccountInHierarchy(trans.TK_NO, parentAccount, childAccounts);
+    const isInternalCo = isAccountInHierarchy(trans.TK_CO, parentAccount, childAccounts);
+    
+    // Chỉ tính khi giao dịch với tài khoản bên ngoài hệ thống cha-con
+    if (isInternalNo && !isInternalCo) {
+      phatSinhNo += trans.SO_TIEN;
+    }
+    if (isInternalCo && !isInternalNo) {
+      phatSinhCo += trans.SO_TIEN;
+    }
+  }
+  
+  return [phatSinhNo, phatSinhCo];
 }
 
 /**
@@ -2252,7 +2379,7 @@ function processTransactionsInBatches(transactions, batchSize = 100) {
 }
 
 /**
- * HÀM PHỤ: Xử lý trường hợp đặc biệt - tài khoản có giao dịch nội bộ
+ * HÀM PHỤ: Xử lý trường hợp đặc biệt - tài khoản có giao dịch nội bộ (SỬA LẠI)
  */
 function handleInternalTransactions(transactions, parentAccount, childAccounts) {
   // Lọc bỏ giao dịch nội bộ giữa tài khoản cha và con để tránh tính trùng lặp
@@ -2262,6 +2389,7 @@ function handleInternalTransactions(transactions, parentAccount, childAccounts) 
     
     // Nếu cả TK Nợ và TK Có đều thuộc hệ thống tài khoản cha-con, đây là giao dịch nội bộ
     if (isInternalNo && isInternalCo) {
+      console.log(`⚠️ Bỏ qua giao dịch nội bộ: ${trans.TK_NO} -> ${trans.TK_CO} (${trans.SO_TIEN})`);
       return false; // Bỏ qua giao dịch nội bộ
     }
     
@@ -2270,7 +2398,7 @@ function handleInternalTransactions(transactions, parentAccount, childAccounts) 
 }
 
 /**
- * HÀM PHỤ: Tính toán số dư cuối kỳ với xử lý giao dịch nội bộ
+ * HÀM PHỤ: Tính toán số dư cuối kỳ với xử lý giao dịch nội bộ (SỬA LẠI)
  */
 function calculateFinalBalanceWithInternalHandling(parentAccount, childAccounts, duNoDauKy, duCoDauKy, transactionsInPeriod) {
   let duNoCuoiKy = duNoDauKy;
@@ -2388,4 +2516,77 @@ function optimizeLargeTransactionProcessing(transactions, batchSize = 500) {
   }
   
   return optimizedTransactions;
+}
+
+/**
+ * HÀM PHỤ: Kiểm tra và xử lý giao dịch trùng lặp
+ */
+function removeDuplicateTransactions(transactions) {
+  const seen = new Set();
+  const uniqueTransactions = [];
+  
+  transactions.forEach(trans => {
+    const key = `${trans.NGAY_HT}_${trans.SO_CT}_${trans.TK_NO}_${trans.TK_CO}_${trans.SO_TIEN}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      uniqueTransactions.push(trans);
+    }
+  });
+  
+  return uniqueTransactions;
+}
+
+/**
+ * HÀM PHỤ: Tính toán số dư động đầu kỳ chi tiết (DEBUG)
+ */
+function debugSoDuDauKy(parentAccount, childAccounts, allTransactions, ngayBatDau, taiKhoanMap) {
+  console.log(`🔍 DEBUG SỐ DƯ ĐẦU KỲ CHO TÀI KHOẢN ${parentAccount}:`);
+  
+  let duNo = 0;
+  let duCo = 0;
+  
+  // 1. Số dư gốc
+  const parentInfo = taiKhoanMap.get(parentAccount);
+  if (parentInfo) {
+    console.log(`   - Số dư gốc TK ${parentAccount}: Nợ ${parentInfo.duNoGoc}, Có ${parentInfo.duCoGoc}`);
+    duNo += parentInfo.duNoGoc;
+    duCo += parentInfo.duCoGoc;
+  }
+  
+  // 2. Số dư gốc tài khoản con
+  childAccounts.forEach(child => {
+    const childInfo = taiKhoanMap.get(child.ma);
+    if (childInfo) {
+      console.log(`   - Số dư gốc TK ${child.ma}: Nợ ${childInfo.duNoGoc}, Có ${childInfo.duCoGoc}`);
+      duNo += childInfo.duNoGoc;
+      duCo += childInfo.duCoGoc;
+    }
+  });
+  
+  console.log(`   - Tổng số dư gốc: Nợ ${duNo}, Có ${duCo}`);
+  
+  // 3. Giao dịch trước kỳ báo cáo
+  let giaoDichTruocKy = 0;
+  allTransactions.forEach(trans => {
+    if (new Date(trans.NGAY_HT) < ngayBatDau) {
+      if (trans.TK_NO === parentAccount || isAccountInHierarchy(trans.TK_NO, parentAccount, childAccounts)) {
+        duNo += trans.SO_TIEN;
+        giaoDichTruocKy++;
+        console.log(`   - Giao dịch trước kỳ TK ${trans.TK_NO}: +${trans.SO_TIEN} (Nợ)`);
+      }
+      if (trans.TK_CO === parentAccount || isAccountInHierarchy(trans.TK_CO, parentAccount, childAccounts)) {
+        duCo += trans.SO_TIEN;
+        giaoDichTruocKy++;
+        console.log(`   - Giao dịch trước kỳ TK ${trans.TK_CO}: +${trans.SO_TIEN} (Có)`);
+      }
+    }
+  });
+  
+  console.log(`   - Số giao dịch trước kỳ: ${giaoDichTruocKy}`);
+  console.log(`   - Số dư cuối cùng: Nợ ${duNo}, Có ${duCo}`);
+  
+  const [duNoFinal, duCoFinal] = tinhSoDuDongDauKy(duNo, duCo);
+  console.log(`   - Số dư động đầu kỳ: Nợ ${duNoFinal}, Có ${duCoFinal}`);
+  
+  return [duNoFinal, duCoFinal];
 }
