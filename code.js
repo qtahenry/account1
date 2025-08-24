@@ -1111,7 +1111,7 @@ function taoSoChiTietTaiKhoan_V2(startDateStr, endDateStr, taiKhoanCanXem) {
       console.warn('⚠️ CẢNH BÁO:', validation.warnings.join(', '));
     }
 
-    const allTransactionsRaw = readDataFromPrefixedSheets(ss, 'DL_', ['NGAY_HT', 'TK_NO', 'TK_CO', 'SO_TIEN']);
+    const allTransactionsRaw = readDataFromPrefixedSheets(ss, 'DL_', ['NGAY_HT', 'TK_NO', 'TK_CO', 'SO_TIEN', 'SO_CT', 'NGAY_CT', 'DIEN_GIAI', 'TEN_HANG', 'QUY_CACH']);
     const allTransactions = xuLyGiaoDichVaThue(allTransactionsRaw);
     
     // Tối ưu hóa xử lý giao dịch lớn
@@ -1119,7 +1119,7 @@ function taoSoChiTietTaiKhoan_V2(startDateStr, endDateStr, taiKhoanCanXem) {
 
     ss.toast('Đang tính toán số dư và phát sinh...', 'Bước 2/4');
     const outputData = [];
-    const headers = ['Ngày Ghi Sổ', 'Số Chứng Từ', 'Ngày Chứng Từ', 'Diễn Giải', 'TK Đối Ứng', 'Phát Sinh Nợ', 'Phát Sinh Có', 'Dư Nợ Cuối Kỳ', 'Dư Có Cuối Kỳ'];
+    const headers = ['Ngày Ghi Sổ', 'Số Chứng Từ', 'Ngày Chứng Từ', 'Diễn Giải', 'Tên Hàng', 'Quy Cách', 'TK Đối Ứng', 'Phát Sinh Nợ', 'Phát Sinh Có', 'Dư Nợ Cuối Kỳ', 'Dư Có Cuối Kỳ'];
 
     for (const tk of taiKhoanCanXem) {
       if (!taiKhoanMap.has(tk)) continue;
@@ -1131,7 +1131,7 @@ function taoSoChiTietTaiKhoan_V2(startDateStr, endDateStr, taiKhoanCanXem) {
       // Tạo tiêu đề báo cáo với thông tin tổng hợp
       const titleRow = createReportTitle(tk, tkInfo, childAccounts);
       
-      outputData.push([titleRow, '', '', '', '', '', '', '', '']);
+      outputData.push([titleRow, '', '', '', '', '', '', '', '', '', '']);
       outputData.push(headers);
 
       // Tính số dư đầu kỳ động (SỬA LẠI LOGIC)
@@ -1141,7 +1141,7 @@ function taoSoChiTietTaiKhoan_V2(startDateStr, endDateStr, taiKhoanCanXem) {
       if (childAccounts.length > 0) {
         debugSoDuDauKy(tk, childAccounts, optimizedTransactions, ngayBatDau, taiKhoanMap);
       }
-      outputData.push(['', '', '', 'Số dư đầu kỳ', '', '', '', duNoDauKy, duCoDauKy]);
+      outputData.push(['', '', '', 'Số dư đầu kỳ', '', '', '', '', '', duNoDauKy, duCoDauKy]);
 
       let duNoCuoiKy = duNoDauKy;
       let duCoCuoiKy = duCoDauKy;
@@ -1178,6 +1178,8 @@ function taoSoChiTietTaiKhoan_V2(startDateStr, endDateStr, taiKhoanCanXem) {
               trans.SO_CT || '', 
               trans.NGAY_CT ? new Date(trans.NGAY_CT) : '', 
               finalDienGiai, 
+              tenHang || '', 
+              quyCach || '', 
               tkDoiUng, 
               totalPhatSinhNo, 
               totalPhatSinhCo, 
@@ -1186,9 +1188,9 @@ function taoSoChiTietTaiKhoan_V2(startDateStr, endDateStr, taiKhoanCanXem) {
             ]);
           });
 
-      outputData.push(['', '', '', 'Cộng phát sinh trong kỳ', '', tongPhatSinhNo, tongPhatSinhCo, '', '']);
-      outputData.push(['', '', '', 'Số dư cuối kỳ', '', '', '', duNoCuoiKy, duCoCuoiKy]);
-      outputData.push(['', '', '', '', '', '', '', '', '']);
+      outputData.push(['', '', '', 'Cộng phát sinh trong kỳ', '', '', '', '', tongPhatSinhNo, tongPhatSinhCo, '', '']);
+      outputData.push(['', '', '', 'Số dư cuối kỳ', '', '', '', '', '', '', duNoCuoiKy, duCoCuoiKy]);
+      outputData.push(['', '', '', '', '', '', '', '', '', '', '', '']);
       
       // Log thống kê quá trình tổng hợp
       const processingTime = Date.now() - startTime;
@@ -1201,7 +1203,7 @@ function taoSoChiTietTaiKhoan_V2(startDateStr, endDateStr, taiKhoanCanXem) {
     }
 
     if (outputData.length > 0) {
-      sheetSoCT.getRange(1, 1, outputData.length, 9).setValues(outputData);
+      sheetSoCT.getRange(1, 1, outputData.length, 11).setValues(outputData);
     }
 
     ss.toast('Đang định dạng báo cáo...', 'Bước 4/4');
@@ -1211,11 +1213,11 @@ function taoSoChiTietTaiKhoan_V2(startDateStr, endDateStr, taiKhoanCanXem) {
         const dienGiai = rowData[3]?.toString() || '';
 
         if (dienGiai.startsWith('SỔ CHI TIẾT TÀI KHOẢN')) {
-            sheetSoCT.getRange(currentRow, 1, 1, 9).merge().setFontWeight('bold').setBackground('#c9daf8').setHorizontalAlignment('center');
+            sheetSoCT.getRange(currentRow, 1, 1, 11).merge().setFontWeight('bold').setBackground('#c9daf8').setHorizontalAlignment('center');
         } else if (rowData[0] === 'Ngày Ghi Sổ') {
-            sheetSoCT.getRange(currentRow, 1, 1, 9).setFontWeight('bold').setBackground('#4a86e8').setFontColor('white');
+            sheetSoCT.getRange(currentRow, 1, 1, 11).setFontWeight('bold').setBackground('#4a86e8').setFontColor('white');
         } else if (dienGiai.includes('Số dư đầu kỳ') || dienGiai.includes('Cộng phát sinh') || dienGiai.includes('Số dư cuối kỳ')) {
-             sheetSoCT.getRange(currentRow, 4, 1, 6).setFontWeight('bold');
+             sheetSoCT.getRange(currentRow, 4, 1, 8).setFontWeight('bold');
         }
     }
 
