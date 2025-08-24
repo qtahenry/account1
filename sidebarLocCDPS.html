@@ -6,79 +6,155 @@
     body {
       font-family: 'Google Sans', Arial, sans-serif;
       margin: 0;
-      padding: 20px;
+      padding: 15px;
       background-color: #f8f9fa;
     }
     
-    .header {
-      background: linear-gradient(135deg, #4285f4, #34a853);
-      color: white;
-      padding: 15px;
-      margin: -20px -20px 20px -20px;
-      border-radius: 0 0 10px 10px;
+    .tab-container {
+      display: flex;
+      margin-bottom: 15px;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      overflow: hidden;
     }
     
-    .header h2 {
-      margin: 0;
-      font-size: 18px;
+    .tab {
+      flex: 1;
+      padding: 12px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      border: none;
+      background: transparent;
+      font-size: 13px;
       font-weight: 500;
     }
     
-    .header p {
-      margin: 5px 0 0 0;
-      font-size: 12px;
-      opacity: 0.9;
+    .tab.active {
+      background-color: #4285f4;
+      color: white;
     }
     
-    .controls {
-      margin-bottom: 15px;
+    .tab:hover:not(.active) {
+      background-color: #f1f3f4;
+    }
+    
+    .tab-content {
+      display: none;
+    }
+    
+    .tab-content.active {
+      display: block;
+    }
+    
+    .section {
+      margin-bottom: 12px;
+    }
+    
+    .section-title {
+      font-size: 13px;
+      font-weight: 500;
+      color: #5f6368;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .date-inputs {
       display: flex;
       gap: 10px;
     }
     
-    .btn {
-      padding: 8px 16px;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 12px;
-      transition: all 0.2s;
+    .date-inputs div {
       flex: 1;
     }
     
-    .btn-primary {
-      background-color: #1a73e8;
-      color: white;
-    }
-    
-    .btn-primary:hover {
-      background-color: #1557b0;
-    }
-    
-    .btn-secondary {
-      background-color: #f1f3f4;
-      color: #5f6368;
+    input[type="date"], input[type="text"] {
+      width: 100%;
+      padding: 8px;
       border: 1px solid #dadce0;
+      border-radius: 4px;
+      font-size: 13px;
+      box-sizing: border-box;
     }
     
-    .btn-secondary:hover {
-      background-color: #e8eaed;
+    .search-box {
+      position: relative;
+      margin-bottom: 15px;
+    }
+    
+    .search-input {
+      width: 100%;
+      padding: 10px 40px 10px 15px;
+      border: 2px solid #dadce0;
+      border-radius: 25px;
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.2s;
+      box-sizing: border-box;
+    }
+    
+    .search-input:focus {
+      border-color: #4285f4;
+    }
+    
+    .search-icon {
+      position: absolute;
+      right: 15px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: #5f6368;
+    }
+    
+    .clear-search {
+      position: absolute;
+      right: 40px;
+      top: 50%;
+      transform: translateY(-50%);
+      cursor: pointer;
+      color: #5f6368;
+      display: none;
+    }
+    
+    .select-all-controls {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    
+    .btn-small {
+      padding: 6px 12px;
+      border: 1px solid #dadce0;
+      border-radius: 4px;
+      background: white;
+      color: #5f6368;
+      cursor: pointer;
+      font-size: 12px;
+      transition: all 0.2s;
+    }
+    
+    .btn-small:hover {
+      background-color: #f1f3f4;
+      border-color: #4285f4;
     }
     
     .account-list {
-      max-height: 400px;
+      max-height: 250px;
       overflow-y: auto;
       background: white;
       border-radius: 8px;
       box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      border: 1px solid #dadce0;
     }
     
     .account-item {
       display: flex;
-      align-items: center;
-      padding: 12px 15px;
+      align-items: flex-start;
+      padding: 10px 12px;
       border-bottom: 1px solid #f0f0f0;
-      transition: background-color 0.2s;
+      transition: background-color 0.15s;
     }
     
     .account-item:last-child {
@@ -86,13 +162,14 @@
     }
     
     .account-item:hover {
-      background-color: #f8f9fa;
+      background-color: #f1f3f4;
     }
     
-    .account-item input[type="checkbox"] {
+    input[type="checkbox"] {
       margin-right: 12px;
-      transform: scale(1.2);
-      accent-color: #1a73e8;
+      margin-top: 4px;
+      transform: scale(1.1);
+      accent-color: #4285f4;
     }
     
     .account-info {
@@ -101,223 +178,468 @@
     
     .account-code {
       font-weight: 500;
-      color: #1f1f1f;
+      color: #202124;
       margin-bottom: 2px;
     }
     
     .account-name {
-      font-size: 12px;
+      font-size: 11px;
       color: #5f6368;
     }
     
     .status {
-      margin-top: 15px;
+      text-align: center;
+      font-size: 12px;
+      color: #5f6368;
+      margin: 15px 0;
       padding: 10px;
       background: white;
       border-radius: 6px;
-      border-left: 4px solid #34a853;
-      font-size: 12px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      border: 1px solid #e8eaed;
     }
     
-    .action-buttons {
-      margin-top: 20px;
+    .actions {
+      margin-top: 15px;
       display: flex;
       gap: 10px;
     }
     
-    .btn-success {
+    .btn {
+      flex: 1;
+      padding: 12px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin-bottom: 8px;
+      min-width: 0;
+    }
+    
+    .btn-primary {
+      background-color: #4285f4;
+      color: white;
+    }
+    
+    .btn-primary:hover:not(:disabled) {
+      background-color: #3367d6;
+    }
+    
+    .btn-secondary {
       background-color: #34a853;
       color: white;
     }
     
-    .btn-success:hover {
-      background-color: #2d8f44;
+    .btn-secondary:hover:not(:disabled) {
+      background-color: #2d8e47;
     }
     
-    .btn-danger {
-      background-color: #ea4335;
-      color: white;
+    .btn:disabled {
+      background-color: #e0e0e0;
+      cursor: not-allowed;
     }
     
-    .btn-danger:hover {
-      background-color: #d73527;
+    .skeleton {
+      background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+      background-size: 200% 100%;
+      animation: loading 1.5s infinite;
     }
     
-    .loading {
-      display: none;
-      text-align: center;
-      padding: 20px;
-      color: #5f6368;
+    @keyframes loading {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
     }
     
-    .spinner {
-      display: inline-block;
-      width: 20px;
-      height: 20px;
-      border: 3px solid #f3f3f3;
-      border-top: 3px solid #1a73e8;
-      border-radius: 50%;
-      animation: spin 1s linear infinite;
+    .skeleton-item {
+      height: 60px;
+      margin-bottom: 5px;
+      border-radius: 6px;
     }
     
-    @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
+    .info-box {
+      background: #e8f0fe;
+      border: 1px solid #4285f4;
+      border-radius: 6px;
+      padding: 12px;
+      margin-bottom: 15px;
+      font-size: 12px;
+      color: #1a73e8;
     }
   </style>
 </head>
 <body>
-  <div class="header">
-    <h2>🏦 Lọc Tài khoản</h2>
-    <p>Chọn tài khoản cấp 1 để hiển thị trên báo cáo</p>
+
+
+  <div class="tab-container">
+    <button class="tab active" onclick="switchTab('main')">💼 Tài Khoản & Báo Cáo</button>
+    <button class="tab" onclick="switchTab('write')">✍️ Ghi Tài Khoản</button>
   </div>
 
-  <div class="controls">
-    <button class="btn btn-secondary" onclick="selectAll()">Chọn tất cả</button>
-    <button class="btn btn-secondary" onclick="clearAll()">Bỏ chọn tất cả</button>
-  </div>
+  <!-- TAB TÀI KHOẢN & BÁO CÁO -->
+  <div id="main" class="tab-content active">
+    <div class="section">
+      <div class="section-title">🔍 Tìm Kiếm Tài Khoản</div>
+      <div class="search-box">
+        <input type="text" id="searchInput" class="search-input" placeholder="🔍 Tìm theo mã hoặc tên tài khoản..." oninput="filterAccounts()">
+        <span class="search-icon">🔍</span>
+        <span class="clear-search" onclick="clearSearch()" title="Xóa tìm kiếm">✕</span>
+      </div>
+    </div>
 
-  <div class="account-list" id="accountList">
-    <? for (var i = 0; i < accounts.length; i++) { ?>
-      <div class="account-item">
-        <input type="checkbox" 
-               id="account_<?= accounts[i].ma ?>" 
-               value="<?= accounts[i].ma ?>"
-               onchange="updateStatus()"
-               <?= selectedAccounts.includes(accounts[i].ma) ? 'checked' : '' ?>>
-        <div class="account-info">
-          <div class="account-code"><?= accounts[i].ma ?></div>
-          <div class="account-name"><?= accounts[i].ten ?></div>
+    <div class="section">
+      <div class="section-title">📋 Danh Sách Tài Khoản</div>
+      <div class="select-all-controls">
+        <button class="btn-small" onclick="selectAllAccounts()">✅ Chọn Tất Cả</button>
+        <button class="btn-small" onclick="deselectAllAccounts()">❌ Bỏ Chọn Tất Cả</button>
+      </div>
+      <div class="account-list" id="accountList">
+        <div id="loading" style="padding: 20px; text-align: center; color: #5f6368;">Đang tải danh sách...</div>
+      </div>
+    </div>
+    
+    <div class="status" id="status">Đã chọn: 0 tài khoản</div>
+
+    <div class="section">
+      <div class="section-title">📅 Kỳ Báo Cáo</div>
+      <div class="date-inputs">
+        <div>
+          <label for="startDate">Từ ngày</label>
+          <input type="date" id="startDate">
+        </div>
+        <div>
+          <label for="endDate">Đến ngày</label>
+          <input type="date" id="endDate">
         </div>
       </div>
-    <? } ?>
+    </div>
+
+    <div class="section">
+      <div class="section-title">📊 Loại Báo Cáo</div>
+      <div class="actions">
+        <button class="btn btn-primary" onclick="createCDPS()">📊 Cân Đối Phát Sinh</button>
+        <button class="btn btn-secondary" onclick="createSoChiTiet()">📖 Sổ Chi Tiết</button>
+      </div>
+    </div>
   </div>
 
-  <div class="status" id="status">
-    <strong>Trạng thái:</strong> <span id="statusText">Chưa chọn tài khoản nào</span>
-  </div>
+  <!-- TAB GHI TÀI KHOẢN -->
+  <div id="write" class="tab-content">
+    <div class="info-box">
+      💡 <strong>Hướng dẫn:</strong> Chọn tài khoản từ danh sách bên dưới để ghi vào ô đang được chọn trong sheet
+    </div>
 
-  <div class="action-buttons">
-    <button class="btn btn-success" onclick="applyFilter()">✅ Áp dụng Filter</button>
-    <button class="btn btn-danger" onclick="clearFilter()">🗑️ Xóa Filter</button>
-  </div>
+    <div class="section">
+      <div class="section-title">🔍 Tìm Kiếm Nhanh</div>
+      <div class="search-box">
+        <input type="text" id="quickSearchInput" class="search-input" placeholder="🔍 Tìm nhanh tài khoản..." oninput="filterQuickAccounts()">
+        <span class="search-icon">🔍</span>
+        <span class="clear-search" onclick="clearQuickSearch()" title="Xóa tìm kiếm">✕</span>
+      </div>
+    </div>
 
-  <div class="loading" id="loading">
-    <div class="spinner"></div>
-    <div>Đang xử lý...</div>
+    <div class="section">
+      <div class="section-title">💼 Tất Cả Tài Khoản</div>
+      <div class="account-list" id="allAccountsList">
+        <div id="loadingAll" style="padding: 20px; text-align: center; color: #5f6368;">Đang tải danh sách...</div>
+      </div>
+    </div>
   </div>
 
   <script>
-    // Cập nhật trạng thái khi load trang
+    let allAccounts = [];
+    let selectedAccounts = [];
+    let currentTab = 'main';
+
     window.onload = function() {
-      updateStatus();
+      // Tải ngày báo cáo đã lưu trước đó hoặc sử dụng mặc định
+      loadReportDates();
+
+      // Tải danh sách tài khoản
+      loadAccounts();
+      loadAllAccounts();
     };
-    
-    // Chọn tất cả
-    function selectAll() {
-      const checkboxes = document.querySelectorAll('input[type="checkbox"]');
-      checkboxes.forEach(cb => cb.checked = true);
+
+    function switchTab(tabName) {
+      // Ẩn tất cả tab content
+      const tabContents = document.querySelectorAll('.tab-content');
+      tabContents.forEach(content => content.classList.remove('active'));
+      
+      // Bỏ active tất cả tab buttons
+      const tabs = document.querySelectorAll('.tab');
+      tabs.forEach(tab => tab.classList.remove('active'));
+      
+      // Hiển thị tab được chọn
+      document.getElementById(tabName).classList.add('active');
+      event.target.classList.add('active');
+      
+      currentTab = tabName;
+      
+      // Nếu chuyển về tab main, cập nhật trạng thái
+      if (tabName === 'main') {
+        updateStatus();
+      }
+    }
+
+    function loadAccounts() {
+      google.script.run.withSuccessHandler(accounts => {
+        allAccounts = accounts;
+        renderAccountList(allAccounts);
+        updateStatus();
+      }).withFailureHandler(err => {
+        document.getElementById('loading').textContent = 'Lỗi tải dữ liệu.';
+      }).getAccountsForSidebar();
+    }
+
+    function loadAllAccounts() {
+      google.script.run.withSuccessHandler(accounts => {
+        renderAllAccountsList(accounts);
+      }).withFailureHandler(err => {
+        document.getElementById('loadingAll').textContent = 'Lỗi tải dữ liệu.';
+      }).getAccountsForSidebar();
+    }
+
+    function loadReportDates() {
+      google.script.run.withSuccessHandler(dates => {
+        if (dates && dates.startDate && dates.endDate) {
+          // Sử dụng ngày đã lưu trước đó
+          document.getElementById('startDate').value = dates.startDate;
+          document.getElementById('endDate').value = dates.endDate;
+        } else {
+          // Sử dụng ngày mặc định (tháng hiện tại)
+          const today = new Date();
+          const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+          const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+          document.getElementById('startDate').valueAsDate = firstDay;
+          document.getElementById('endDate').valueAsDate = lastDay;
+        }
+      }).withFailureHandler(err => {
+        // Nếu có lỗi, sử dụng ngày mặc định
+        const today = new Date();
+        const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+        const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+        document.getElementById('startDate').valueAsDate = firstDay;
+        document.getElementById('endDate').valueAsDate = lastDay;
+      }).getReportDates();
+    }
+
+
+
+    function renderAccountList(accounts) {
+      const listElement = document.getElementById('accountList');
+      if (accounts.length === 0) {
+        listElement.innerHTML = '<div style="padding: 20px; text-align: center; color: #5f6368;">Không tìm thấy tài khoản.</div>';
+        return;
+      }
+      
+      let html = '';
+      accounts.forEach(acc => {
+        const isChecked = selectedAccounts.includes(acc.ma);
+        html += `
+          <label class="account-item" for="acc-${acc.ma}">
+            <input type="checkbox" id="acc-${acc.ma}" value="${acc.ma}" 
+                   ${isChecked ? 'checked' : ''} onchange="updateSelection()">
+            <div class="account-info">
+              <div class="account-code">${acc.ma}</div>
+              <div class="account-name">${acc.ten}</div>
+            </div>
+          </label>
+        `;
+      });
+      listElement.innerHTML = html;
+    }
+
+    function renderAllAccountsList(accounts) {
+      const listElement = document.getElementById('allAccountsList');
+      if (accounts.length === 0) {
+        listElement.innerHTML = '<div style="padding: 20px; text-align: center; color: #5f6368;">Không tìm thấy tài khoản.</div>';
+        return;
+      }
+      
+      let html = '';
+      accounts.forEach(acc => {
+        html += `
+          <div class="account-item" onclick="writeAccountToCell('${acc.ma}')">
+            <div class="account-info">
+              <div class="account-code">${acc.ma}</div>
+              <div class="account-name">${acc.ten}</div>
+            </div>
+          </div>
+        `;
+      });
+      listElement.innerHTML = html;
+    }
+
+
+
+    function filterAccounts() {
+      const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+      const clearBtn = document.querySelector('.clear-search');
+      
+      if (searchTerm) {
+        clearBtn.style.display = 'block';
+        const filtered = allAccounts.filter(acc => 
+          acc.ma.toLowerCase().includes(searchTerm) || 
+          acc.ten.toLowerCase().includes(searchTerm)
+        );
+        renderAccountList(filtered);
+      } else {
+        clearBtn.style.display = 'none';
+        renderAccountList(allAccounts);
+      }
+    }
+
+    function filterQuickAccounts() {
+      const searchTerm = document.getElementById('quickSearchInput').value.toLowerCase();
+      const clearBtn = document.querySelectorAll('.clear-search')[1];
+      
+      if (searchTerm) {
+        clearBtn.style.display = 'block';
+        const filtered = allAccounts.filter(acc => 
+          acc.ma.toLowerCase().includes(searchTerm) || 
+          acc.ten.toLowerCase().includes(searchTerm)
+        );
+        renderAllAccountsList(filtered);
+      } else {
+        clearBtn.style.display = 'none';
+        renderAllAccountsList(allAccounts);
+      }
+    }
+
+    function clearSearch() {
+      document.getElementById('searchInput').value = '';
+      document.querySelector('.clear-search').style.display = 'none';
+      renderAccountList(allAccounts);
+    }
+
+    function clearQuickSearch() {
+      document.getElementById('quickSearchInput').value = '';
+      document.querySelectorAll('.clear-search')[1].style.display = 'none';
+      renderAllAccountsList(allAccounts);
+    }
+
+    function selectAllAccounts() {
+      const checkboxes = document.querySelectorAll('#accountList input[type="checkbox"]');
+      checkboxes.forEach(cb => {
+        cb.checked = true;
+      });
+      updateSelection();
+    }
+
+    function deselectAllAccounts() {
+      const checkboxes = document.querySelectorAll('#accountList input[type="checkbox"]');
+      checkboxes.forEach(cb => {
+        cb.checked = false;
+      });
+      updateSelection();
+    }
+
+    function updateSelection() {
+      const checkboxes = document.querySelectorAll('#accountList input[type="checkbox"]:checked');
+      selectedAccounts = Array.from(checkboxes).map(cb => cb.value);
       updateStatus();
     }
-    
-    // Bỏ chọn tất cả
-    function clearAll() {
-      const checkboxes = document.querySelectorAll('input[type="checkbox"]');
-      checkboxes.forEach(cb => cb.checked = false);
-      updateStatus();
-    }
-    
-    // Cập nhật trạng thái
+
     function updateStatus() {
-      const checkboxes = document.querySelectorAll('input[type="checkbox"]');
-      const checked = Array.from(checkboxes).filter(cb => cb.checked);
-      const statusText = document.getElementById('statusText');
+      const statusElement = document.getElementById('status');
+      statusElement.textContent = `Đã chọn: ${selectedAccounts.length} tài khoản`;
       
-      if (checked.length === 0) {
-        statusText.textContent = 'Chưa chọn tài khoản nào (hiển thị tất cả)';
-      } else {
-        const selectedAccounts = checked.map(cb => cb.value).join(', ');
-        statusText.textContent = `Đã chọn ${checked.length} tài khoản: ${selectedAccounts}`;
-      }
+      // Lưu vào properties service
+      google.script.run.saveSelectedAccounts(selectedAccounts);
     }
-    
-    // Áp dụng filter
-    function applyFilter() {
-      const checkboxes = document.querySelectorAll('input[type="checkbox"]');
-      const selectedAccounts = Array.from(checkboxes)
-        .filter(cb => cb.checked)
-        .map(cb => cb.value);
-      
-      showLoading(true);
-      
-      google.script.run
-        .withSuccessHandler(function(result) {
-          showLoading(false);
-          if (result) {
-            // Tự động chạy báo cáo sau khi lưu filter
-            google.script.run
-              // .withSuccessHandler(function() {
-              //   alert('✅ Đã áp dụng filter và tạo lại báo cáo thành công!');
-              // })
-              .withFailureHandler(function(error) {
-                alert('❌ Lỗi khi tạo báo cáo: ' + error.toString());
-              })
-              .taoCanDoiPhatSinh();
-          }
-        })
-        .withFailureHandler(function(error) {
-          showLoading(false);
-          alert('❌ Lỗi khi lưu filter: ' + error.toString());
-        })
-        .saveSelectedAccounts(selectedAccounts);
+
+    function writeAccountToCell(maTK) {
+      google.script.run.withSuccessHandler(result => {
+        if (result.success) {
+          // Hiển thị thông báo thành công
+          const statusElement = document.getElementById('status');
+          statusElement.textContent = `✅ Đã ghi "${maTK}" vào sheet`;
+          statusElement.style.background = '#e6f4ea';
+          statusElement.style.borderColor = '#34a853';
+          statusElement.style.color = '#137333';
+          
+          // Reset sau 3 giây
+          setTimeout(() => {
+            statusElement.textContent = `Đã chọn: ${selectedAccounts.length} tài khoản`;
+            statusElement.style.background = 'white';
+            statusElement.style.borderColor = '#e8eaed';
+            statusElement.style.color = '#5f6368';
+          }, 3000);
+          
+          // Không chuyển tab, chỉ hiển thị thông báo
+        } else {
+          alert('Lỗi: ' + result.error);
+        }
+      }).withFailureHandler(error => {
+        alert('Lỗi hệ thống: ' + error.toString());
+      }).ghiTaiKhoanVaoCell(maTK);
     }
-    
-    // Xóa filter
-    function clearFilter() {
-      if (confirm('Bạn có chắc muốn xóa filter và hiển thị tất cả tài khoản?')) {
-        showLoading(true);  
-        google.script.run
-          .withSuccessHandler(function(result) {
-            showLoading(false);
-            if (result) {
-              // Reset checkboxes
-              clearAll();
-              
-              // Tự động chạy báo cáo sau khi xóa filter
-              google.script.run
-                .withSuccessHandler(function() {
-                  alert('✅ Đã xóa filter và tạo lại báo cáo thành công!');
-                })
-                .withFailureHandler(function(error) {
-                  alert('❌ Lỗi khi tạo báo cáo: ' + error.toString());
-                })
-                .taoCanDoiPhatSinh();
-            }
-          })
-          .withFailureHandler(function(error) {
-            showLoading(false);
-            alert('❌ Lỗi khi xóa filter: ' + error.toString());
-          })
-          .clearAccountFilter();
-      }
-    }
-    
-    // Hiển thị/ẩn loading
-    function showLoading(show) {
-      const loading = document.getElementById('loading');
-      const accountList = document.getElementById('accountList');
-      const buttons = document.querySelectorAll('.btn');
+
+    function createCDPS() {
+      const startDate = document.getElementById('startDate').value;
+      const endDate = document.getElementById('endDate').value;
       
-      if (show) {
-        loading.style.display = 'block';
-        accountList.style.display = 'none';
-        buttons.forEach(btn => btn.disabled = true);
-      } else {
-        loading.style.display = 'none';
-        accountList.style.display = 'block';
-        buttons.forEach(btn => btn.disabled = false);
+      if (!startDate || !endDate) {
+        alert('Vui lòng chọn kỳ báo cáo');
+        return;
       }
+      
+      // Lưu ngày báo cáo và tạo báo cáo ngay lập tức
+      saveReportDates(startDate, endDate);
+      
+      // Chạy báo cáo CDPS với ngày tháng từ sidebar
+      google.script.run.withSuccessHandler(() => {
+        console.log('✅ Báo cáo Cân đối Phát sinh đã hoàn thành');
+        // Cập nhật trạng thái sau khi hoàn thành
+        updateStatus();
+      }).withFailureHandler(error => {
+        console.error('❌ Lỗi tạo báo cáo:', error.toString());
+        alert('❌ Lỗi khi tạo báo cáo: ' + error.toString());
+      }).taoCanDoiPhatSinh(startDate, endDate);
+    }
+
+    function createSoChiTiet() {
+      if (selectedAccounts.length === 0) {
+        alert('Vui lòng chọn ít nhất một tài khoản');
+        return;
+      }
+      
+      const startDate = document.getElementById('startDate').value;
+      const endDate = document.getElementById('endDate').value;
+      
+      if (!startDate || !endDate) {
+        alert('Vui lòng chọn kỳ báo cáo');
+        return;
+      }
+      
+      // Lưu ngày báo cáo
+      saveReportDates(startDate, endDate);
+      
+      // Chạy báo cáo sổ chi tiết
+      google.script.run.withSuccessHandler(() => {
+        console.log('✅ Báo cáo Sổ Chi Tiết đã hoàn thành');
+        // Cập nhật trạng thái sau khi hoàn thành
+        updateStatus();
+      }).withFailureHandler(error => {
+        console.error('❌ Lỗi tạo báo cáo:', error.toString());
+        alert('❌ Lỗi khi tạo báo cáo: ' + error.toString());
+      }).taoSoChiTietTaiKhoan_V2(startDate, endDate, selectedAccounts);
+    }
+
+    function saveReportDates(startDate, endDate) {
+      google.script.run.withSuccessHandler(result => {
+        if (result) {
+          console.log('✅ Đã lưu ngày báo cáo:', startDate, '→', endDate);
+        } else {
+          console.log('⚠️ Không thể lưu ngày báo cáo');
+        }
+      }).withFailureHandler(error => {
+        console.log('❌ Lỗi lưu ngày báo cáo:', error.toString());
+      }).saveReportDates(startDate, endDate);
     }
   </script>
 </body>
