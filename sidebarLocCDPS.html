@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    body {
+      font-family: 'Google Sans', Arial, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background-color: #f8f9fa;
+    }
+    
+    .header {
+      background: linear-gradient(135deg, #4285f4, #34a853);
+      color: white;
+      padding: 15px;
+      margin: -20px -20px 20px -20px;
+      border-radius: 0 0 10px 10px;
+    }
+    
+    .header h2 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 500;
+    }
+    
+    .header p {
+      margin: 5px 0 0 0;
+      font-size: 12px;
+      opacity: 0.9;
+    }
+    
+    .controls {
+      margin-bottom: 15px;
+      display: flex;
+      gap: 10px;
+    }
+    
+    .btn {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      transition: all 0.2s;
+      flex: 1;
+    }
+    
+    .btn-primary {
+      background-color: #1a73e8;
+      color: white;
+    }
+    
+    .btn-primary:hover {
+      background-color: #1557b0;
+    }
+    
+    .btn-secondary {
+      background-color: #f1f3f4;
+      color: #5f6368;
+      border: 1px solid #dadce0;
+    }
+    
+    .btn-secondary:hover {
+      background-color: #e8eaed;
+    }
+    
+    .account-list {
+      max-height: 400px;
+      overflow-y: auto;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    
+    .account-item {
+      display: flex;
+      align-items: center;
+      padding: 12px 15px;
+      border-bottom: 1px solid #f0f0f0;
+      transition: background-color 0.2s;
+    }
+    
+    .account-item:last-child {
+      border-bottom: none;
+    }
+    
+    .account-item:hover {
+      background-color: #f8f9fa;
+    }
+    
+    .account-item input[type="checkbox"] {
+      margin-right: 12px;
+      transform: scale(1.2);
+      accent-color: #1a73e8;
+    }
+    
+    .account-info {
+      flex: 1;
+    }
+    
+    .account-code {
+      font-weight: 500;
+      color: #1f1f1f;
+      margin-bottom: 2px;
+    }
+    
+    .account-name {
+      font-size: 12px;
+      color: #5f6368;
+    }
+    
+    .status {
+      margin-top: 15px;
+      padding: 10px;
+      background: white;
+      border-radius: 6px;
+      border-left: 4px solid #34a853;
+      font-size: 12px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    
+    .action-buttons {
+      margin-top: 20px;
+      display: flex;
+      gap: 10px;
+    }
+    
+    .btn-success {
+      background-color: #34a853;
+      color: white;
+    }
+    
+    .btn-success:hover {
+      background-color: #2d8f44;
+    }
+    
+    .btn-danger {
+      background-color: #ea4335;
+      color: white;
+    }
+    
+    .btn-danger:hover {
+      background-color: #d73527;
+    }
+    
+    .loading {
+      display: none;
+      text-align: center;
+      padding: 20px;
+      color: #5f6368;
+    }
+    
+    .spinner {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 3px solid #f3f3f3;
+      border-top: 3px solid #1a73e8;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h2>🏦 Lọc Tài khoản</h2>
+    <p>Chọn tài khoản cấp 1 để hiển thị trên báo cáo</p>
+  </div>
+
+  <div class="controls">
+    <button class="btn btn-secondary" onclick="selectAll()">Chọn tất cả</button>
+    <button class="btn btn-secondary" onclick="clearAll()">Bỏ chọn tất cả</button>
+  </div>
+
+  <div class="account-list" id="accountList">
+    <? for (var i = 0; i < accounts.length; i++) { ?>
+      <div class="account-item">
+        <input type="checkbox" 
+               id="account_<?= accounts[i].ma ?>" 
+               value="<?= accounts[i].ma ?>"
+               onchange="updateStatus()"
+               <?= selectedAccounts.includes(accounts[i].ma) ? 'checked' : '' ?>>
+        <div class="account-info">
+          <div class="account-code"><?= accounts[i].ma ?></div>
+          <div class="account-name"><?= accounts[i].ten ?></div>
+        </div>
+      </div>
+    <? } ?>
+  </div>
+
+  <div class="status" id="status">
+    <strong>Trạng thái:</strong> <span id="statusText">Chưa chọn tài khoản nào</span>
+  </div>
+
+  <div class="action-buttons">
+    <button class="btn btn-success" onclick="applyFilter()">✅ Áp dụng Filter</button>
+    <button class="btn btn-danger" onclick="clearFilter()">🗑️ Xóa Filter</button>
+  </div>
+
+  <div class="loading" id="loading">
+    <div class="spinner"></div>
+    <div>Đang xử lý...</div>
+  </div>
+
+  <script>
+    // Cập nhật trạng thái khi load trang
+    window.onload = function() {
+      updateStatus();
+    };
+    
+    // Chọn tất cả
+    function selectAll() {
+      const checkboxes = document.querySelectorAll('input[type="checkbox"]');
+      checkboxes.forEach(cb => cb.checked = true);
+      updateStatus();
+    }
+    
+    // Bỏ chọn tất cả
+    function clearAll() {
+      const checkboxes = document.querySelectorAll('input[type="checkbox"]');
+      checkboxes.forEach(cb => cb.checked = false);
+      updateStatus();
+    }
+    
+    // Cập nhật trạng thái
+    function updateStatus() {
+      const checkboxes = document.querySelectorAll('input[type="checkbox"]');
+      const checked = Array.from(checkboxes).filter(cb => cb.checked);
+      const statusText = document.getElementById('statusText');
+      
+      if (checked.length === 0) {
+        statusText.textContent = 'Chưa chọn tài khoản nào (hiển thị tất cả)';
+      } else {
+        const selectedAccounts = checked.map(cb => cb.value).join(', ');
+        statusText.textContent = `Đã chọn ${checked.length} tài khoản: ${selectedAccounts}`;
+      }
+    }
+    
+    // Áp dụng filter
+    function applyFilter() {
+      const checkboxes = document.querySelectorAll('input[type="checkbox"]');
+      const selectedAccounts = Array.from(checkboxes)
+        .filter(cb => cb.checked)
+        .map(cb => cb.value);
+      
+      showLoading(true);
+      
+      google.script.run
+        .withSuccessHandler(function(result) {
+          showLoading(false);
+          if (result) {
+            // Tự động chạy báo cáo sau khi lưu filter
+            google.script.run
+              // .withSuccessHandler(function() {
+              //   alert('✅ Đã áp dụng filter và tạo lại báo cáo thành công!');
+              // })
+              .withFailureHandler(function(error) {
+                alert('❌ Lỗi khi tạo báo cáo: ' + error.toString());
+              })
+              .taoCanDoiPhatSinh();
+          }
+        })
+        .withFailureHandler(function(error) {
+          showLoading(false);
+          alert('❌ Lỗi khi lưu filter: ' + error.toString());
+        })
+        .saveSelectedAccounts(selectedAccounts);
+    }
+    
+    // Xóa filter
+    function clearFilter() {
+      if (confirm('Bạn có chắc muốn xóa filter và hiển thị tất cả tài khoản?')) {
+        showLoading(true);  
+        google.script.run
+          .withSuccessHandler(function(result) {
+            showLoading(false);
+            if (result) {
+              // Reset checkboxes
+              clearAll();
+              
+              // Tự động chạy báo cáo sau khi xóa filter
+              google.script.run
+                .withSuccessHandler(function() {
+                  alert('✅ Đã xóa filter và tạo lại báo cáo thành công!');
+                })
+                .withFailureHandler(function(error) {
+                  alert('❌ Lỗi khi tạo báo cáo: ' + error.toString());
+                })
+                .taoCanDoiPhatSinh();
+            }
+          })
+          .withFailureHandler(function(error) {
+            showLoading(false);
+            alert('❌ Lỗi khi xóa filter: ' + error.toString());
+          })
+          .clearAccountFilter();
+      }
+    }
+    
+    // Hiển thị/ẩn loading
+    function showLoading(show) {
+      const loading = document.getElementById('loading');
+      const accountList = document.getElementById('accountList');
+      const buttons = document.querySelectorAll('.btn');
+      
+      if (show) {
+        loading.style.display = 'block';
+        accountList.style.display = 'none';
+        buttons.forEach(btn => btn.disabled = true);
+      } else {
+        loading.style.display = 'none';
+        accountList.style.display = 'block';
+        buttons.forEach(btn => btn.disabled = false);
+      }
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    body {
+      font-family: 'Google Sans', Arial, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background-color: #f8f9fa;
+    }
+    .header {
+      background: linear-gradient(135deg, #ea4335, #fbbc04);
+      color: white;
+      padding: 15px;
+      margin: -20px -20px 20px -20px;
+      border-radius: 0 0 10px 10px;
+    }
+    .header h2 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 500;
+    }
+    .header p {
+      margin: 5px 0 0 0;
+      font-size: 12px;
+      opacity: 0.9;
+    }
+    .search-box {
+      position: relative;
+      margin-bottom: 15px;
+    }
+    .search-input {
+      width: 100%;
+      padding: 10px 40px 10px 15px;
+      border: 2px solid #dadce0;
+      border-radius: 25px;
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.2s;
+      box-sizing: border-box;
+    }
+    .search-input:focus {
+      border-color: #ea4335;
+    }
+    .search-icon {
+      position: absolute;
+      right: 15px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: #5f6368;
+    }
+    .clear-search {
+      position: absolute;
+      right: 40px;
+      top: 50%;
+      transform: translateY(-50%);
+      cursor: pointer;
+      color: #5f6368;
+      display: none;
+    }
+    .skeleton {
+      background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+      background-size: 200% 100%;
+      animation: loading 1.5s infinite;
+    }
+    @keyframes loading {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+    .skeleton-item {
+      height: 60px;
+      margin-bottom: 5px;
+      border-radius: 6px;
+    }
+    .account-list {
+      max-height: 500px;
+      overflow-y: auto;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    }
+    .account-item {
+      display: flex;
+      align-items: center;
+      padding: 12px 15px;
+      border-bottom: 1px solid #f0f0f0;
+      cursor: pointer;
+      transition: all 0.15s ease-out;
+    }
+    .account-item:last-child {
+      border-bottom: none;
+    }
+    .account-item:hover {
+      background-color: #fef7e0;
+      transform: translateX(2px);
+    }
+    .account-item:active {
+      background-color: #fff3e0;
+      transform: translateX(1px);
+    }
+    .account-code {
+      font-weight: 600;
+      color: #1f1f1f;
+      margin-bottom: 2px;
+      font-family: 'Courier New', monospace;
+    }
+    .account-name {
+      font-size: 12px;
+      color: #5f6368;
+      line-height: 1.3;
+    }
+    .account-badge {
+      background: #e8f0fe;
+      color: #1a73e8;
+      padding: 2px 6px;
+      border-radius: 10px;
+      font-size: 10px;
+      margin-left: auto;
+      margin-left: 10px;
+    }
+    .no-results {
+      text-align: center;
+      padding: 30px;
+      color: #5f6368;
+      font-style: italic;
+    }
+    .loading {
+      display: none;
+      text-align: center;
+      padding: 20px;
+      color: #5f6368;
+    }
+    .spinner {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 3px solid #f3f3f3;
+      border-top: 3px solid #ea4335;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-bottom: 10px;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    .actions {
+      margin-top: 15px;
+      display: flex;
+      gap: 8px;
+    }
+    .btn {
+      padding: 8px 12px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      transition: all 0.2s;
+      flex: 1;
+    }
+    .btn-primary {
+      background-color: #ea4335;
+      color: white;
+    }
+    .btn-primary:hover {
+      background-color: #d33b2c;
+    }
+    .btn-secondary {
+      background-color: #f1f3f4;
+      color: #5f6368;
+    }
+    .btn-secondary:hover {
+      background-color: #e8eaed;
+    }
+    .stats {
+      background: #f8f9fa;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 11px;
+      color: #5f6368;
+      margin-top: 10px;
+      text-align: center;
+    }
+    .toast {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      padding: 12px 16px;
+      background: #4caf50;
+      color: white;
+      border-radius: 6px;
+      font-size: 14px;
+      z-index: 10000;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      transform: translateX(100%);
+      transition: transform 0.3s ease-out;
+    }
+    .toast.show {
+      transform: translateX(0);
+    }
+    .toast.error {
+      background: #f44336;
+    }
+    .account-list::-webkit-scrollbar {
+      width: 6px;
+    }
+    .account-list::-webkit-scrollbar-track {
+      background: #f1f1f1;
+    }
+    .account-list::-webkit-scrollbar-thumb {
+      background: #c1c1c1;
+      border-radius: 3px;
+    }
+    .account-list::-webkit-scrollbar-thumb:hover {
+      background: #a8a8a8;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h2>💼 Chọn Tài khoản</h2>
+    <p>Tìm và chọn tài khoản để ghi vào ô</p>
+  </div>
+
+  <div class="search-box">
+    <input type="text" class="search-input" id="searchInput" 
+           placeholder="🔍 Tìm theo mã hoặc tên tài khoản..." 
+           oninput="searchAccounts()"
+           autocomplete="off">
+    <span class="search-icon">🔍</span>
+    <span class="clear-search" id="clearSearch" onclick="clearSearch()">✕</span>
+  </div>
+
+  <div class="loading" id="loading">
+    <div class="spinner"></div>
+    <div>Đang tải danh sách tài khoản...</div>
+  </div>
+
+  <div class="account-list" id="accountList">
+    <div class="skeleton skeleton-item"></div>
+    <div class="skeleton skeleton-item"></div>
+    <div class="skeleton skeleton-item"></div>
+    <div class="skeleton skeleton-item"></div>
+  </div>
+
+  <div class="stats" id="stats">
+    Sẵn sàng tải dữ liệu...
+  </div>
+
+  <div class="actions">
+    <button class="btn btn-primary" onclick="refreshData()">🔄 Làm mới</button>
+    <button class="btn btn-secondary" onclick="closeSidebar()">✕ Đóng</button>
+  </div>
+
+  <script>
+    let allAccounts = [];
+    let searchTimeout;
+    let isDataLoaded = false;
+
+    window.onload = function() {
+      focusSearchBox();
+      loadAccountData();
+    };
+
+    function loadAccountData() {
+      showLoading(true);
+      google.script.run
+        .withSuccessHandler(function(data) {
+          try {
+            allAccounts = data.accounts || [];
+            isDataLoaded = true;
+            
+            // **SỬA LỖI**: Đã xóa lệnh gọi updateContextInfo()
+            displayAllAccounts();
+            showLoading(false);
+            
+            updateStats(`${allAccounts.length} tài khoản`);
+          } catch (error) {
+            showError('Lỗi xử lý dữ liệu: ' + error.toString());
+          }
+        })
+        .withFailureHandler(function(error) {
+          showError('Không thể tải dữ liệu: ' + error.toString());
+        })
+        .getTaiKhoanDataForSidebar();
+    }
+
+    function focusSearchBox() {
+      setTimeout(() => {
+        const searchInput = document.getElementById('searchInput');
+        if (searchInput) {
+          searchInput.focus();
+        }
+      }, 100);
+    }
+    
+    // **SỬA LỖI**: Đã xóa hoàn toàn hàm updateContextInfo()
+
+    function searchAccounts() {
+      const searchInput = document.getElementById('searchInput');
+      const clearButton = document.getElementById('clearSearch');
+      clearButton.style.display = searchInput.value ? 'block' : 'none';
+      clearTimeout(searchTimeout);
+      searchTimeout = setTimeout(() => {
+        displayAccounts();
+      }, 150);
+    }
+
+    function clearSearch() {
+      document.getElementById('searchInput').value = '';
+      document.getElementById('clearSearch').style.display = 'none';
+      displayAllAccounts();
+      focusSearchBox();
+    }
+
+    function getFilteredAccounts() {
+      if (!isDataLoaded) return [];
+      const searchTerm = document.getElementById('searchInput').value.toLowerCase().trim();
+      if (!searchTerm) {
+        return allAccounts;
+      }
+      return allAccounts.filter(account => 
+        account.ma.toLowerCase().includes(searchTerm) || 
+        account.ten.toLowerCase().includes(searchTerm)
+      );
+    }
+
+    function displayAllAccounts() {
+      if (!isDataLoaded) return;
+      const accountList = document.getElementById('accountList');
+      if (allAccounts.length === 0) {
+        accountList.innerHTML = '<div class="no-results">📋 Không có tài khoản nào</div>';
+        updateStats('Không có tài khoản');
+        return;
+      }
+      let html = '';
+      allAccounts.forEach(account => {
+        html += `
+          <div class="account-item" onclick="selectAccount('${account.ma}')">
+            <div style="flex: 1;">
+              <div class="account-code">${account.ma}</div>
+              <div class="account-name">${account.ten}</div>
+            </div>
+            <span class="account-badge">Cấp ${account.loai || 'N/A'}</span>
+          </div>
+        `;
+      });
+      accountList.innerHTML = html;
+      updateStats(`Hiển thị ${allAccounts.length} tài khoản`);
+    }
+
+    function displayAccounts() {
+      const accountList = document.getElementById('accountList');
+      let filteredAccounts = getFilteredAccounts();
+      if (filteredAccounts.length === 0) {
+        accountList.innerHTML = '<div class="no-results">🔍 Không tìm thấy tài khoản phù hợp</div>';
+        updateStats('Không có kết quả');
+        return;
+      }
+      let html = '';
+      filteredAccounts.forEach(account => {
+        html += `
+          <div class="account-item" onclick="selectAccount('${account.ma}')">
+            <div style="flex: 1;">
+              <div class="account-code">${account.ma}</div>
+              <div class="account-name">${account.ten}</div>
+            </div>
+            <span class="account-badge">Cấp ${account.loai || 'N/A'}</span>
+          </div>
+        `;
+      });
+      accountList.innerHTML = html;
+      updateStats(`Hiển thị ${filteredAccounts.length}/${allAccounts.length} tài khoản`);
+    }
+
+    function selectAccount(maTK) {
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (result.success) {
+            showToast(`✅ Đã ghi ${maTK} thành công`);
+          } else {
+            showToast(`❌ Lỗi: ${result.error}`, 'error');
+          }
+        })
+        .withFailureHandler(function(error) {
+          showToast(`❌ Lỗi kết nối: ${error.toString()}`, 'error');
+        })
+        .ghiTaiKhoanVaoCell(maTK); // **SỬA LỖI**: Không cần gửi context nữa
+    }
+
+    function refreshData() {
+      isDataLoaded = false;
+      updateStats('Đang làm mới...');
+      // Gọi hàm xóa cache trước khi tải lại dữ liệu
+      google.script.run.withSuccessHandler(loadAccountData).clearAccountCache();
+    }
+
+    function closeSidebar() {
+      google.script.host.close();
+    }
+
+    function showLoading(show) {
+      const loading = document.getElementById('loading');
+      const accountList = document.getElementById('accountList');
+      loading.style.display = show ? 'block' : 'none';
+      accountList.style.display = show ? 'none' : 'block';
+    }
+
+    function updateStats(message) {
+      const stats = document.getElementById('stats');
+      stats.textContent = message;
+    }
+
+    function showError(message) {
+      const accountList = document.getElementById('accountList');
+      accountList.innerHTML = `<div class="no-results">❌ ${message}</div>`;
+      showLoading(false);
+    }
+
+    function showToast(message, type = 'success') {
+      const existingToast = document.querySelector('.toast');
+      if (existingToast) {
+        existingToast.remove();
+      }
+      const toast = document.createElement('div');
+      toast.className = `toast ${type === 'error' ? 'error' : ''}`;
+      toast.textContent = message;
+      document.body.appendChild(toast);
+      setTimeout(() => toast.classList.add('show'), 10);
+      setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 300);
+      }, 3000);
+    }
+
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') {
+        closeSidebar();
+      }
+      if (e.ctrlKey && (e.key === 'r' || e.key === 'R')) {
+        e.preventDefault();
+        refreshData();
+      }
+      if (e.key === 'Enter' && document.activeElement.id === 'searchInput') {
+        const firstAccount = document.querySelector('.account-item');
+        if (firstAccount) {
+          firstAccount.click();
+        }
+      }
+    });
+  </script>
+</body>
+</html>

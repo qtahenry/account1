@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    body { font-family: 'Google Sans', Arial, sans-serif; margin: 0; padding: 20px; background-color: #f8f9fa; }
+    .header { background: linear-gradient(135deg, #4285f4, #1a73e8); color: white; padding: 15px; margin: -20px -20px 20px -20px; border-radius: 0 0 10px 10px; }
+    .header h2 { margin: 0; font-size: 18px; font-weight: 500; }
+    .header p { margin: 5px 0 0 0; font-size: 12px; opacity: 0.9; }
+    .section { margin-bottom: 15px; }
+    .section-title { font-size: 13px; font-weight: 500; color: #5f6368; margin-bottom: 8px; }
+    .date-inputs { display: flex; gap: 10px; }
+    .date-inputs div { flex: 1; }
+    input[type="date"], input[type="text"] { width: 100%; padding: 8px; border: 1px solid #dadce0; border-radius: 4px; font-size: 13px; box-sizing: border-box; }
+    .account-list { max-height: 300px; overflow-y: auto; background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border: 1px solid #dadce0; }
+    .account-item { display: flex; align-items: flex-start; padding: 10px 12px; border-bottom: 1px solid #f0f0f0; transition: background-color 0.15s; }
+    .account-item:last-child { border-bottom: none; }
+    .account-item:hover { background-color: #f1f3f4; }
+    input[type="checkbox"] { margin-right: 12px; margin-top: 4px; transform: scale(1.1); accent-color: #1a73e8; }
+    .account-info { flex: 1; }
+    .account-code { font-weight: 500; color: #202124; margin-bottom: 2px; }
+    .account-name { font-size: 11px; color: #5f6368; }
+    .actions { margin-top: 20px; }
+    .btn { width: 100%; padding: 12px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 500; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 8px; }
+    .btn-primary { background-color: #1a73e8; color: white; }
+    .btn-primary:hover:not(:disabled) { background-color: #1557b0; }
+    .btn:disabled { background-color: #e0e0e0; cursor: not-allowed; }
+    .status { text-align: center; font-size: 12px; color: #5f6368; margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h2>📖 Sổ Chi Tiết Tài Khoản</h2>
+    <p>Chọn điều kiện để tạo báo cáo</p>
+  </div>
+
+  <div class="section">
+    <div class="section-title">📅 Kỳ Báo Cáo</div>
+    <div class="date-inputs">
+      <div>
+        <label for="startDate">Từ ngày</label>
+        <input type="date" id="startDate">
+      </div>
+      <div>
+        <label for="endDate">Đến ngày</label>
+        <input type="date" id="endDate">
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">🏦 Chọn Tài Khoản</div>
+    <input type="text" id="searchInput" placeholder="🔍 Tìm theo mã hoặc tên tài khoản..." oninput="filterAccounts()">
+    <div class="account-list" id="accountList" style="margin-top: 8px;">
+      <div id="loading" style="padding: 20px; text-align: center; color: #5f6368;">Đang tải danh sách...</div>
+    </div>
+  </div>
+  
+  <div class="status" id="status">Đã chọn: 0 tài khoản</div>
+
+  <div class="actions">
+    <button class="btn btn-primary" id="createReportBtn" onclick="runReport()">🚀 Tạo Báo Cáo</button>
+  </div>
+
+  <script>
+    let allAccounts = [];
+
+    window.onload = function() {
+      // Tự động điền ngày tháng mặc định là tháng hiện tại
+      const today = new Date();
+      const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+      const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+      document.getElementById('startDate').valueAsDate = firstDay;
+      document.getElementById('endDate').valueAsDate = lastDay;
+
+      google.script.run.withSuccessHandler(accounts => {
+        allAccounts = accounts;
+        renderList(allAccounts);
+      }).withFailureHandler(err => {
+        document.getElementById('loading').textContent = 'Lỗi tải dữ liệu.';
+      }).getAccountsForSidebar();
+    };
+
+    function renderList(accounts) {
+      const listElement = document.getElementById('accountList');
+      if (accounts.length === 0) {
+        listElement.innerHTML = '<div style="padding: 20px; text-align: center; color: #5f6368;">Không tìm thấy tài khoản.</div>';
+        return;
+      }
+      let html = '';
+      accounts.forEach(acc => {
+        html += `
+          <label class="account-item" for="acc-${acc.ma}">
+            <input type="checkbox" id="acc-${acc.ma}" value="${acc.ma}" onchange="updateStatus()">
+            <div class="account-info">
+              <div class="account-code">${acc.ma}</div>
+              <div class="account-name">${acc.ten}</div>
+            </div>
+          </label>
+        `;
+      });
+      listElement.innerHTML = html;
+      updateStatus();
+    }
+
+    function filterAccounts() {
+      const searchTerm = document.getElementById('searchInput').value.toLowerCase().trim();
+      const filtered = allAccounts.filter(acc => 
+        acc.ma.toLowerCase().includes(searchTerm) || 
+        acc.ten.toLowerCase().includes(searchTerm)
+      );
+      renderList(filtered);
+    }
+    
+    function updateStatus() {
+      const selectedCount = document.querySelectorAll('.account-list input:checked').length;
+      document.getElementById('status').textContent = `Đã chọn: ${selectedCount} tài khoản`;
+    }
+
+    function runReport() {
+      const startDate = document.getElementById('startDate').value;
+      const endDate = document.getElementById('endDate').value;
+      const selectedAccounts = Array.from(document.querySelectorAll('.account-list input:checked')).map(cb => cb.value);
+
+      if (!startDate || !endDate) {
+        alert('Vui lòng chọn Từ ngày và Đến ngày.');
+        return;
+      }
+      if (selectedAccounts.length === 0) {
+        alert('Vui lòng chọn ít nhất một tài khoản để xem báo cáo.');
+        return;
+      }
+      
+      const button = document.getElementById('createReportBtn');
+      button.disabled = true;
+      button.innerHTML = 'Đang xử lý...';
+
+      google.script.run
+        .withSuccessHandler(result => {
+          // Báo cáo đã chạy xong, không cần đóng sidebar
+          button.disabled = false;
+          button.innerHTML = '🚀 Tạo Báo Cáo';
+          // Có thể hiển thị một thông báo thành công nhỏ nếu muốn
+        })
+        .withFailureHandler(error => {
+          alert(`Lỗi khi tạo báo cáo: ${error}`);
+          button.disabled = false;
+          button.innerHTML = '🚀 Tạo Báo Cáo';
+        })
+        .taoSoChiTietTaiKhoan_V2(startDate, endDate, selectedAccounts);
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,1572 @@
+function onOpen() {
+  const ui = SpreadsheetApp.getUi();
+  const menu = ui.createMenu('⚡ Kế toán Pro');
+  
+  menu.addItem('📊 Tạo Cân đối Phát sinh', 'taoCanDoiPhatSinh');
+  menu.addItem('📦 Tạo Nhập Xuất Tồn', 'taoNhapXuatTon');
+  menu.addItem('📖 Tạo Sổ Chi tiết Tài khoản', 'moSidebarSoChiTiet');
+  menu.addSeparator();
+  
+  // Menu con đầy đủ cho chức năng Tính giá xuất kho
+  const tinhGiaMenu = ui.createMenu('⚙️ Tính giá Xuất kho');
+  tinhGiaMenu.addItem('Bình quân Gia quyền Theo Tháng', 'runBQGQ_Thang');
+  tinhGiaMenu.addItem('Bình quân Di động', 'runBQDD');
+  tinhGiaMenu.addItem('Nhập trước, Xuất trước (FIFO)', 'runFIFO');
+  tinhGiaMenu.addItem('Nhập sau, Xuất trước (LIFO)', 'runLIFO');
+  
+  menu.addSubMenu(tinhGiaMenu);
+  menu.addSeparator();
+  
+  menu.addItem('💼 Chọn Tài khoản', 'moSidebarTaiKhoan');
+  menu.addItem('📦 Chọn Hàng hóa', 'moSidebarHangHoa');
+  menu.addItem('🎯 Lọc Tài Khoản', 'openAccountFilter');
+  
+  menu.addToUi();
+}
+
+// Các hàm nhỏ để gọi hàm chính với đúng tham số
+function runBQGQ_Thang() {
+  tinhGiaXuatKho('BQGQ_THANG');
+}
+function runBQDD() {
+  tinhGiaXuatKho('BQDD');
+}
+function runFIFO() {
+  tinhGiaXuatKho('FIFO');
+}
+function runLIFO() {
+  tinhGiaXuatKho('LIFO');
+}
+
+function onEdit(e) {
+  try {
+    const range = e.range;
+    const sheet = range.getSheet();
+    const sheetName = sheet.getName();
+    const startRow = range.getRow();
+    const startCol = range.getColumn();
+    const numRows = range.getNumRows();
+
+    // --- TÁC VỤ 1 & 2: Tự động chạy báo cáo (Không thay đổi) ---
+    if (sheetName === 'CDPS' && numRows === 1 && ( (startRow === 1 && startCol === 12) || (startRow === 2 && startCol === 12) )) {
+      SpreadsheetApp.getActiveSpreadsheet().toast('Đang tính toán lại Cân đối phát sinh...');
+      Utilities.sleep(1000);
+      taoCanDoiPhatSinh();
+      return;
+    }
+    if (sheetName === 'NXT' && numRows === 1 && ( (startRow === 1 && startCol === 15) || (startRow === 2 && startCol === 15) )) {
+      SpreadsheetApp.getActiveSpreadsheet().toast('Đang tính toán lại Nhập xuất tồn...');
+      Utilities.sleep(1000);
+      taoNhapXuatTon();
+      return;
+    }
+
+    // --- TÁC VỤ 3: Tự động điền thông tin hàng hóa (Nâng cấp) ---
+    if (!sheetName.startsWith('DL_') || startRow <= 1) return;
+
+    const headerRow = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    const cleanHeaders = headerRow.map(h => h.toString().trim().toUpperCase());
+    
+    const colIndexMaKho = cleanHeaders.indexOf('MA_KHO');
+    const colIndexMaHang = cleanHeaders.indexOf('MA_HANG');
+
+    // **SỬA LỖI**: Thêm điều kiện kiểm tra cột được chỉnh sửa
+    // 1. Lấy vị trí cột cuối cùng của vùng được chỉnh sửa
+    const endCol = startCol + range.getNumColumns() - 1; 
+    // 2. Kiểm tra xem vùng được sửa có "chạm" vào cột MA_KHO hoặc MA_HANG không
+    const isRelevantColumnEdited = (endCol >= colIndexMaKho + 1 && startCol <= colIndexMaKho + 1) || 
+                                   (endCol >= colIndexMaHang + 1 && startCol <= colIndexMaHang + 1);
+
+    // 3. Nếu không có sự thay đổi nào ở 2 cột này -> thoát hàm
+    if (!isRelevantColumnEdited) {
+      return;
+    }
+    // Kết thúc phần sửa lỗi
+
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    ss.toast(`Đang xử lý ${numRows} dòng...`, 'Tự động điền', 5);
+    
+    const colIndexTenHang = cleanHeaders.indexOf('TEN_HANG');
+    const colIndexQuyCach = cleanHeaders.indexOf('QUY_CACH');
+    const colIndexDVT = cleanHeaders.indexOf('DVT');
+
+    if (colIndexMaKho === -1 || colIndexMaHang === -1 || (colIndexTenHang === -1 && colIndexQuyCach === -1 && colIndexDVT === -1)) {
+        return;
+    }
+
+    const hangHoaMap = getHangHoaLookupMap();
+    if (hangHoaMap.size === 0) return;
+
+    const dataRange = sheet.getRange(startRow, 1, numRows, sheet.getLastColumn()).getValues();
+    const tenHangValues = [];
+    const quyCachValues = [];
+    const dvtValues = [];
+    let filledCount = 0;
+
+    for (let i = 0; i < numRows; i++) {
+      const currentRow = dataRange[i];
+      const maKho = currentRow[colIndexMaKho]?.toString().trim();
+      const maHang = currentRow[colIndexMaHang]?.toString().trim();
+
+      if (maKho && maHang) {
+        const key = `${maKho}|${maHang}`;
+        if (hangHoaMap.has(key)) {
+          const itemInfo = hangHoaMap.get(key);
+          tenHangValues.push([itemInfo.tenHang]);
+          quyCachValues.push([itemInfo.quyCach]);
+          dvtValues.push([itemInfo.dvt]);
+          filledCount++;
+        } else {
+          tenHangValues.push(['']);
+          quyCachValues.push(['']);
+          dvtValues.push(['']);
+        }
+      } else {
+        tenHangValues.push(['']);
+        quyCachValues.push(['']);
+        dvtValues.push(['']);
+      }
+    }
+
+    if (colIndexTenHang > -1 && tenHangValues.length > 0) {
+      sheet.getRange(startRow, colIndexTenHang + 1, numRows, 1).setValues(tenHangValues);
+    }
+    if (colIndexQuyCach > -1 && quyCachValues.length > 0) {
+      sheet.getRange(startRow, colIndexQuyCach + 1, numRows, 1).setValues(quyCachValues);
+    }
+    if (colIndexDVT > -1 && dvtValues.length > 0) {
+      sheet.getRange(startRow, colIndexDVT + 1, numRows, 1).setValues(dvtValues);
+    }
+
+    ss.toast(`✅ Đã tự động điền ${filledCount}/${numRows} dòng.`, 'Hoàn thành!', 5);
+
+  } catch (error) {
+    console.error('LỖI TRONG HÀM ONEDIT (Bản nâng cấp): ' + error.toString());
+    SpreadsheetApp.getActiveSpreadsheet().toast('Gặp lỗi, vui lòng xem Logs.', 'Lỗi Script', 10);
+  }
+}
+
+
+// ==================== UNIVERSAL DATA READER ====================
+
+// CONFIG CỘT CHO TỪNG LOẠI BÁO CÁO
+const REPORT_COLUMN_CONFIGS = {
+  CDPS: {
+    required: ['NGAY_HT', 'TK_NO', 'TK_CO', 'SO_TIEN', 'THUE_VAT', 'LOAI_CT'],
+    mapping: {
+      'NGAY_HT': 'ngay',
+      'TK_NO': 'tkNo', 
+      'TK_CO': 'tkCo',
+      'SO_TIEN': 'soTien',
+      'THUE_VAT': 'thueVAT',
+      'LOAI_CT': 'loaiCT'
+    }
+  },
+  NXT: {
+    required: ['NGAY_HT', 'TK_NO', 'TK_CO', 'SO_TIEN', 'MA_KHO', 'MA_HANG', 'SO_LUONG', 'DON_GIA'],
+    mapping: {
+      'NGAY_HT': 'ngay',
+      'TK_NO': 'tkNo', 
+      'TK_CO': 'tkCo',
+      'SO_TIEN': 'soTien',
+      'MA_KHO': 'maKho',
+      'MA_HANG': 'maHang',
+      'SO_LUONG': 'soLuong',
+      'DON_GIA': 'donGia'
+    }
+  }
+};
+
+// HÀM ĐỌC DỮ LIỆU UNIVERSAL
+function getAllDataFromDLSheets(spreadsheet, reportType, filterCondition = null) {
+  const config = REPORT_COLUMN_CONFIGS[reportType];
+  if (!config) {
+    throw new Error(`Không tìm thấy config cho loại báo cáo: ${reportType}`);
+  }
+  
+  const allSheets = spreadsheet.getSheets();
+  const dataSheets = allSheets.filter(sheet => sheet.getName().startsWith('DL_'));
+  
+  if (dataSheets.length === 0) {
+    throw new Error('Không tìm thấy sheet nào bắt đầu với "DL_"');
+  }
+  
+  const combinedData = [];
+  const processSummary = {
+    totalSheets: dataSheets.length,
+    validSheets: 0,
+    totalRows: 0,
+    errors: []
+  };
+  
+  for (const sheet of dataSheets) {
+    try {
+      const sheetData = processUniversalDataSheet(sheet, config, filterCondition);
+      if (sheetData.length > 0) {
+        combinedData.push(...sheetData);
+        processSummary.totalRows += sheetData.length;
+        processSummary.validSheets++;
+        console.log(`✅ Sheet "${sheet.getName()}": ${sheetData.length} dòng`);
+      }
+    } catch (error) {
+      processSummary.errors.push(`${sheet.getName()}: ${error.message}`);
+      console.log(`⚠️ Lỗi sheet "${sheet.getName()}": ${error.message}`);
+    }
+  }
+  
+  console.log(`📊 Tổng kết ${reportType}: ${processSummary.validSheets}/${processSummary.totalSheets} sheets, ${processSummary.totalRows} dòng`);
+
+  return {
+    data: combinedData,
+    summary: processSummary
+  };
+}
+
+// HÀM XỬ LÝ UNIVERSAL CHO MỘT SHEET
+function processUniversalDataSheet(sheet, config, filterCondition) {
+  const data = sheet.getDataRange().getValues();
+  
+  if (data.length <= 1) {
+    return [];
+  }
+  
+  // Map columns theo config
+  const headerRow = data[0];
+  const columnMap = mapUniversalColumns(headerRow, config, sheet.getName());
+  
+  if (!columnMap.isValid) {
+    throw new Error(`Thiếu cột: ${columnMap.missingColumns.join(', ')}`);
+  }
+  
+  const processedData = [];
+  
+  // Xử lý từ dòng 2 trở đi
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    const processedRow = {
+      sheet: sheet.getName(),
+      row: i + 1
+    };
+    
+    // Map dữ liệu theo config
+    let hasValidData = false;
+    for (const [headerName, propName] of Object.entries(config.mapping)) {
+      const colIndex = columnMap[propName];
+      let value = row[colIndex];
+      
+      // Xử lý theo type dữ liệu
+      if (['soTien', 'thueVAT', 'soLuong', 'donGia'].includes(propName)) {
+        value = parseFloat(value) || 0;
+      } else if (propName === 'ngay') {
+        if (!value) continue; // Bỏ qua dòng không có ngày
+        hasValidData = true;
+      } else {
+        value = value?.toString().trim() || '';
+      }
+      
+      processedRow[propName] = value;
+      
+      // Check điều kiện có dữ liệu hợp lệ
+      if (propName !== 'ngay' && value) {
+        hasValidData = true;
+      }
+    }
+    
+    // Bỏ qua dòng không có dữ liệu
+    if (!hasValidData) continue;
+    
+    // Áp dụng filter condition nếu có
+    if (filterCondition && !filterCondition(processedRow)) {
+      continue;
+    }
+    
+    processedData.push(processedRow);
+  }
+  
+  return processedData;
+}
+
+// HÀM MAP CỘT UNIVERSAL
+function mapUniversalColumns(headerRow, config, sheetName) {
+  const columnMap = {};
+  const missingColumns = [];
+  
+  // Tạo map header
+  const headerMap = {};
+  for (let i = 0; i < headerRow.length; i++) {
+    const headerName = headerRow[i]?.toString().trim().toUpperCase();
+    if (headerName) {
+      headerMap[headerName] = i;
+    }
+  }
+  
+  // Map các cột theo config
+  for (const [headerName, propName] of Object.entries(config.mapping)) {
+    if (headerMap.hasOwnProperty(headerName)) {
+      columnMap[propName] = headerMap[headerName];
+    } else {
+      missingColumns.push(headerName);
+    }
+  }
+  
+  return {
+    ...columnMap,
+    isValid: missingColumns.length === 0,
+    missingColumns: missingColumns
+  };
+}
+
+// HÀM TẠO SUMMARY UNIVERSAL
+function createDataSummary(spreadsheet, reportType) {
+  const allSheets = spreadsheet.getSheets();
+  const dataSheets = allSheets.filter(sheet => sheet.getName().startsWith('DL_'));
+  const config = REPORT_COLUMN_CONFIGS[reportType];
+  
+  let summary = `- Tìm thấy ${dataSheets.length} sheet dữ liệu:\n`;
+  let totalRows = 0;
+  let validSheets = 0;
+  
+  for (const sheet of dataSheets) {
+    try {
+      const data = sheet.getDataRange().getValues();
+      const rowCount = data.length - 1;
+      
+      if (rowCount > 0) {
+        const headerRow = data[0];
+        const columnMap = mapUniversalColumns(headerRow, config, sheet.getName());
+        
+        if (columnMap.isValid) {
+          summary += `  ✅ ${sheet.getName()}: ${rowCount} dòng\n`;
+          totalRows += rowCount;
+          validSheets++;
+        } else {
+          summary += `  ❌ ${sheet.getName()}: Thiếu cột ${columnMap.missingColumns.join(', ')}\n`;
+        }
+      } else {
+        summary += `  ⚠️ ${sheet.getName()}: Trống\n`;
+      }
+    } catch (error) {
+      summary += `  ❌ ${sheet.getName()}: Lỗi ${error.message}\n`;
+    }
+  }
+  
+  summary += `- Tổng: ${validSheets}/${dataSheets.length} sheet hợp lệ, ${totalRows} dòng dữ liệu`;
+  return summary;
+}
+
+// ==================== CÁC HÀM BÁO CÁO SỬ DỤNG UNIVERSAL READER ====================
+
+function taoCanDoiPhatSinh() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  
+  // Lấy các sheet
+  const sheetDMTK = ss.getSheetByName('DMTK');
+  const sheetCDPS = ss.getSheetByName('CDPS');
+  
+  if (!sheetDMTK || !sheetCDPS) {
+    SpreadsheetApp.getUi().alert('Không tìm thấy sheet DMTK hoặc CDPS');
+    return;
+  }
+  
+  // Lấy ngày bắt đầu và kết thúc từ sheet CDPS
+  const ngayBatDau = new Date(ss.getRangeByName('NgayBatDau_CDPS').getValue());
+  const ngayKetThuc = new Date(ss.getRangeByName('NgayKetThuc_CDPS').getValue());
+  
+  if (!ngayBatDau || !ngayKetThuc) {
+    SpreadsheetApp.getUi().alert('Vui lòng nhập ngày bắt đầu (L1) và ngày kết thúc (L2) trong sheet CDPS');
+    return;
+  }
+  
+  // ĐỌC FILTER TỪ PROPERTIES SERVICE
+  const selectedAccounts = getSelectedAccounts();
+  const isFiltered = selectedAccounts.length > 0;
+  
+  // Lấy dữ liệu từ sheet DMTK
+  const dataDMTK = sheetDMTK.getDataRange().getValues();
+  const headerRowDMTK = 1;
+  
+  // ĐỌC DỮ LIỆU TỪ NHIỀU SHEET DL_* BẰNG UNIVERSAL READER
+  const dataResult = getAllDataFromDLSheets(ss, 'CDPS');
+  const combinedData = dataResult.data;
+  
+  // Tạo map để lưu trữ thông tin tài khoản
+  const taiKhoanMap = new Map();
+  
+  // Hàm xác định tính chất tài khoản
+  function xacDinhTinhChatTaiKhoan(maTK) {
+    const kyTuDau = maTK.toString().charAt(0);
+    
+    if (['1', '2'].includes(kyTuDau)) {
+      return 'TAI_SAN';
+    } else if (['3', '4'].includes(kyTuDau)) {
+      return 'NO_VON';
+    } else if (['5', '7'].includes(kyTuDau)) {
+      return 'DOANH_THU';
+    } else if (['6', '8'].includes(kyTuDau)) {
+      return 'CHI_PHI';
+    }
+    
+    return 'KHAC';
+  }
+  
+  // Hàm tính số dư sau phát sinh
+  function tinhSoDuSauPhatSinh(duNoDauKy, duCoDauKy, phatSinhNo, phatSinhCo, tinhChatTK) {
+    let soDuNoCuoi = 0;
+    let soDuCoCuoi = 0;
+    
+    if (tinhChatTK === 'TAI_SAN' || tinhChatTK === 'CHI_PHI') {
+      const soDuThuan = (duNoDauKy + phatSinhNo) - (duCoDauKy + phatSinhCo);
+      if (soDuThuan >= 0) {
+        soDuNoCuoi = soDuThuan;
+        soDuCoCuoi = 0;
+      } else {
+        soDuNoCuoi = 0;
+        soDuCoCuoi = Math.abs(soDuThuan);
+      }
+    } else if (tinhChatTK === 'NO_VON' || tinhChatTK === 'DOANH_THU') {
+      const soDuThuan = (duCoDauKy + phatSinhCo) - (duNoDauKy + phatSinhNo);
+      if (soDuThuan >= 0) {
+        soDuNoCuoi = 0;
+        soDuCoCuoi = soDuThuan;
+      } else {
+        soDuNoCuoi = Math.abs(soDuThuan);
+        soDuCoCuoi = 0;
+      }
+    } else {
+      const tongNo = duNoDauKy + phatSinhNo;
+      const tongCo = duCoDauKy + phatSinhCo;
+      
+      if (tongNo > tongCo) {
+        soDuNoCuoi = tongNo - tongCo;
+        soDuCoCuoi = 0;
+      } else if (tongCo > tongNo) {
+        soDuNoCuoi = 0;
+        soDuCoCuoi = tongCo - tongNo;
+      }
+    }
+    
+    return [soDuNoCuoi, soDuCoCuoi];
+  }
+  
+  // Hàm xử lý VAT
+  function xuLyVAT(tkNo, tkCo, tienVAT, phanLoai) {
+    if (!tienVAT || tienVAT <= 0) return [];
+    
+    const giaoDichVAT = [];
+    const tkNoStr = tkNo?.toString().trim() || '';
+    const tkCoStr = tkCo?.toString().trim() || '';
+    const laTKHQ = (phanLoai?.toString().trim().toUpperCase() === 'TKHQ');
+    
+    if (tkNoStr && ['1', '2', '6', '8'].includes(tkNoStr.charAt(0))) {
+      const tkVATDauVao = tkNoStr.startsWith('211') ? '1332' : '1331';
+      giaoDichVAT.push({
+        tkNo: tkVATDauVao,
+        tkCo: tkCo,
+        soTien: tienVAT,
+        loai: 'VAT_DAU_VAO'
+      });
+    }
+    
+    if (tkCoStr && ['5', '7'].includes(tkCoStr.charAt(0))) {
+      const tkVATDauRa = laTKHQ ? '33312' : '33311';
+      giaoDichVAT.push({
+        tkNo: tkNo,
+        tkCo: tkVATDauRa,
+        soTien: tienVAT,
+        loai: 'VAT_DAU_RA'
+      });
+    }
+    
+    return giaoDichVAT;
+  }
+  
+  // Hàm tìm tài khoản cha
+  function timTaiKhoanCha(maTK, capTaiKhoan) {
+    const ma = maTK.toString().trim();
+    const taiKhoanCha = [];
+    
+    if (capTaiKhoan === 3) {
+      if (ma.length >= 4) {
+        const ma4KyTu = ma.substring(0, 4);
+        const ma3KyTu = ma.substring(0, 3);
+        
+        for (const [maTKKhac, thongTin] of taiKhoanMap.entries()) {
+          if (thongTin.loai === 2 && maTKKhac === ma4KyTu) {
+            taiKhoanCha.push(maTKKhac);
+            break;
+          }
+        }
+        
+        for (const [maTKKhac, thongTin] of taiKhoanMap.entries()) {
+          if (thongTin.loai === 1 && maTKKhac === ma3KyTu) {
+            taiKhoanCha.push(maTKKhac);
+            break;
+          }
+        }
+      }
+    } else if (capTaiKhoan === 2) {
+      if (ma.length >= 3) {
+        const ma3KyTu = ma.substring(0, 3);
+        
+        for (const [maTKKhac, thongTin] of taiKhoanMap.entries()) {
+          if (thongTin.loai === 1 && maTKKhac === ma3KyTu) {
+            taiKhoanCha.push(maTKKhac);
+            break;
+          }
+        }
+      }
+    }
+    
+    return taiKhoanCha;
+  }
+  
+  // HÀM KIỂM TRA TÀI KHOẢN CÓ THUỘC FILTER KHÔNG
+  function kiemTraTaiKhoanThuocFilter(maTK) {
+    if (!isFiltered) return true;
+    
+    const ma = maTK.toString().trim();
+    
+    for (const selectedTK of selectedAccounts) {
+      if (ma.startsWith(selectedTK)) {
+        return true;
+      }
+    }
+    
+    return false;
+  }
+  
+  // BƯỚC 1: Đọc dữ liệu từ DMTK
+  for (let i = headerRowDMTK; i < dataDMTK.length; i++) {
+    const row = dataDMTK[i];
+    const maTK = row[0]?.toString().trim();
+    const tenTK = row[1]?.toString().trim();
+    const loaiTK = parseInt(row[2]) || 0;
+    const duNoDauKy = parseFloat(row[3]) || 0;
+    const duCoDauKy = parseFloat(row[4]) || 0;
+    
+    if (maTK) {
+      taiKhoanMap.set(maTK, {
+        ten: tenTK,
+        loai: loaiTK,
+        duNoDauKyGoc: duNoDauKy,
+        duCoDauKyGoc: duCoDauKy,
+        phatSinhNoTruocKy: 0,
+        phatSinhCoTruocKy: 0,
+        phatSinhNoTrongKy: 0,
+        phatSinhCoTrongKy: 0,
+        tinhChat: xacDinhTinhChatTaiKhoan(maTK)
+      });
+    }
+  }
+  
+  // BƯỚC 2: Xử lý dữ liệu phát sinh từ TẤT CẢ CÁC SHEET DL_*
+  let tongGiaoDichTruocKy = 0;
+  let tongGiaoDichTrongKy = 0;
+  let tongGiaoDichVAT = 0;
+  
+  for (let i = 0; i < combinedData.length; i++) {
+    const row = combinedData[i];
+    const ngayHachToan = new Date(row.ngay);
+    const tkNo = row.tkNo?.toString().trim();
+    const tkCo = row.tkCo?.toString().trim();
+    const tienHang = parseFloat(row.soTien) || 0;
+    const tienVAT = parseFloat(row.thueVAT) || 0;
+    const phanLoai = row.loaiCT?.toString().trim();
+    
+    const laGiaoDichTruocKy = ngayHachToan < ngayBatDau;
+    const laGiaoDichTrongKy = ngayHachToan >= ngayBatDau && ngayHachToan <= ngayKetThuc;
+    
+    if (laGiaoDichTruocKy || laGiaoDichTrongKy) {
+      
+      function capNhatTaiKhoanTrucTiep(maTK, soTien, loaiPhatSinh, laGiaoDichTruocKy) {
+        if (!taiKhoanMap.has(maTK)) {
+          taiKhoanMap.set(maTK, {
+            ten: `Tài khoản ${maTK}`,
+            loai: maTK.length === 3 ? 1 : (maTK.length === 4 ? 2 : 3),
+            duNoDauKyGoc: 0,
+            duCoDauKyGoc: 0,
+            phatSinhNoTruocKy: 0,
+            phatSinhCoTruocKy: 0,
+            phatSinhNoTrongKy: 0,
+            phatSinhCoTrongKy: 0,
+            tinhChat: xacDinhTinhChatTaiKhoan(maTK)
+          });
+        }
+        
+        const thongTin = taiKhoanMap.get(maTK);
+        
+        if (laGiaoDichTruocKy) {
+          if (loaiPhatSinh === 'NO') {
+            thongTin.phatSinhNoTruocKy += soTien;
+          } else {
+            thongTin.phatSinhCoTruocKy += soTien;
+          }
+        } else {
+          if (loaiPhatSinh === 'NO') {
+            thongTin.phatSinhNoTrongKy += soTien;
+          } else {
+            thongTin.phatSinhCoTrongKy += soTien;
+          }
+        }
+      }
+      
+      if (tienHang > 0) {
+        if (tkNo) {
+          capNhatTaiKhoanTrucTiep(tkNo, tienHang, 'NO', laGiaoDichTruocKy);
+        }
+        if (tkCo) {
+          capNhatTaiKhoanTrucTiep(tkCo, tienHang, 'CO', laGiaoDichTruocKy);
+        }
+        
+        if (laGiaoDichTruocKy) {
+          tongGiaoDichTruocKy++;
+        } else {
+          tongGiaoDichTrongKy++;
+        }
+      }
+      
+      if (tienVAT > 0) {
+        const giaoDichVAT = xuLyVAT(tkNo, tkCo, tienVAT, phanLoai);
+        
+        for (const vatGD of giaoDichVAT) {
+          if (vatGD.tkNo) {
+            capNhatTaiKhoanTrucTiep(vatGD.tkNo, vatGD.soTien, 'NO', laGiaoDichTruocKy);
+          }
+          if (vatGD.tkCo) {
+            capNhatTaiKhoanTrucTiep(vatGD.tkCo, vatGD.soTien, 'CO', laGiaoDichTruocKy);
+          }
+          tongGiaoDichVAT++;
+        }
+      }
+    }
+  }
+  
+  // BƯỚC 3: Tính tổng hợp từ tài khoản con lên cha
+  const sortedByLevel = Array.from(taiKhoanMap.entries()).sort((a, b) => {
+    if (b[1].loai !== a[1].loai) {
+      return b[1].loai - a[1].loai;
+    }
+    return a[0].localeCompare(b[0]);
+  });
+  
+  for (const [maTK, thongTin] of sortedByLevel) {
+    const taiKhoanCha = timTaiKhoanCha(maTK, thongTin.loai);
+    
+    for (const maCha of taiKhoanCha) {
+      if (taiKhoanMap.has(maCha)) {
+        const thongTinCha = taiKhoanMap.get(maCha);
+        
+        thongTinCha.duNoDauKyGoc += thongTin.duNoDauKyGoc;
+        thongTinCha.duCoDauKyGoc += thongTin.duCoDauKyGoc;
+        thongTinCha.phatSinhNoTruocKy += thongTin.phatSinhNoTruocKy;
+        thongTinCha.phatSinhCoTruocKy += thongTin.phatSinhCoTruocKy;
+        thongTinCha.phatSinhNoTrongKy += thongTin.phatSinhNoTrongKy;
+        thongTinCha.phatSinhCoTrongKy += thongTin.phatSinhCoTrongKy;
+      }
+    }
+  }
+  
+  // BƯỚC 4: Lọc tài khoản theo filter và dữ liệu
+  function kiemTraTaiKhoanCoData(thongTin) {
+    const [duNoDauKyBaoCao, duCoDauKyBaoCao] = tinhSoDuSauPhatSinh(
+      thongTin.duNoDauKyGoc,
+      thongTin.duCoDauKyGoc,
+      thongTin.phatSinhNoTruocKy,
+      thongTin.phatSinhCoTruocKy,
+      thongTin.tinhChat
+    );
+    
+    return (duNoDauKyBaoCao !== 0 || 
+            duCoDauKyBaoCao !== 0 || 
+            thongTin.phatSinhNoTrongKy !== 0 || 
+            thongTin.phatSinhCoTrongKy !== 0);
+  }
+  
+  const taiKhoanCoData = new Map();
+  for (const [maTK, thongTin] of taiKhoanMap.entries()) {
+    if (kiemTraTaiKhoanThuocFilter(maTK) && kiemTraTaiKhoanCoData(thongTin)) {
+      taiKhoanCoData.set(maTK, thongTin);
+    }
+  }
+  
+  // Tạo header cho bảng CDPS
+  const headers = [
+    'Mã TK', 'Tên TK', 'Loại TK', 
+    'Dư nợ đầu kỳ', 'Dư có đầu kỳ', 
+    'Phát sinh nợ', 'Phát sinh có', 
+    'Dư nợ cuối kỳ', 'Dư có cuối kỳ'
+  ];
+  
+  // Xóa dữ liệu cũ từ dòng 4 trở đi
+  const lastRow = sheetCDPS.getLastRow();
+  if (lastRow >= 5) {
+    sheetCDPS.getRange(5, 1, lastRow - 5, 10).clear();
+  }
+  
+  // Chuẩn bị dữ liệu để ghi
+  const outputData = [];
+  const finalSorted = Array.from(taiKhoanCoData.entries()).sort((a, b) => {
+    return a[0].localeCompare(b[0]);
+  });
+  
+  for (const [maTK, thongTin] of finalSorted) {
+    const [duNoDauKyBaoCao, duCoDauKyBaoCao] = tinhSoDuSauPhatSinh(
+      thongTin.duNoDauKyGoc,
+      thongTin.duCoDauKyGoc,
+      thongTin.phatSinhNoTruocKy,
+      thongTin.phatSinhCoTruocKy,
+      thongTin.tinhChat
+    );
+    
+    const [duNoCuoiKy, duCoCuoiKy] = tinhSoDuSauPhatSinh(
+      duNoDauKyBaoCao,
+      duCoDauKyBaoCao,
+      thongTin.phatSinhNoTrongKy,
+      thongTin.phatSinhCoTrongKy,
+      thongTin.tinhChat
+    );
+    
+    outputData.push([
+      maTK,
+      thongTin.ten,
+      thongTin.loai,
+      duNoDauKyBaoCao,
+      duCoDauKyBaoCao,
+      thongTin.phatSinhNoTrongKy,
+      thongTin.phatSinhCoTrongKy,
+      duNoCuoiKy,
+      duCoCuoiKy
+    ]);
+  }
+  
+  // Ghi dữ liệu vào sheet CDPS từ dòng 5
+  if (outputData.length > 0) {
+    sheetCDPS.getRange(5, 1, outputData.length, 9).setValues(outputData);
+    
+    const dataRange = sheetCDPS.getRange(5, 4, outputData.length, 6);
+    dataRange.setNumberFormat('#,##0');
+    
+    const headerRange = sheetCDPS.getRange(4, 1, 1, 10);
+    headerRange.setBackground('#4472C4');
+    headerRange.setFontColor('white');
+    headerRange.setFontWeight('bold');
+    headerRange.setHorizontalAlignment('center');
+    
+    const allDataRange = sheetCDPS.getRange(4, 1, outputData.length + 1, 10);
+    allDataRange.setBorder(true, true, true, true, true, true);
+    
+    for (let i = 0; i < outputData.length; i++) {
+      const loaiTK = outputData[i][2];
+      if (loaiTK === 1) {
+        const rowRange = sheetCDPS.getRange(5 + i, 1, 1, 10);
+        rowRange.setFontWeight('bold');
+        rowRange.setBackground('#E7E6E6');
+      }
+    }
+  }
+  
+  const tongTaiKhoan = Array.from(taiKhoanMap.entries()).length;
+  const taiKhoanHienThi = outputData.length;
+  const taiKhoanBoQua = tongTaiKhoan - taiKhoanHienThi;
+  
+  const filterText = isFiltered ? `\n- Filter: ${selectedAccounts.join(', ')}` : '\n- Filter: Tất cả tài khoản';
+  const sheetInfo = createDataSummary(ss, 'CDPS');
+  
+  SpreadsheetApp.getUi().alert(`✅ Báo cáo Cân đối Phát sinh đã hoàn thành!\n\n📊 Thống kê:\n- Hiển thị: ${taiKhoanHienThi} tài khoản\n- Bỏ qua: ${taiKhoanBoQua} tài khoản${filterText}\n- Giao dịch trước kỳ: ${tongGiaoDichTruocKy}\n- Giao dịch trong kỳ: ${tongGiaoDichTrongKy}\n- Xử lý VAT: ${tongGiaoDichVAT} giao dịch\n\n📋 Nguồn dữ liệu:\n${sheetInfo}\n\n📅 Kỳ báo cáo: ${ngayBatDau.toLocaleDateString('vi-VN')} → ${ngayKetThuc.toLocaleDateString('vi-VN')}`);
+}
+
+
+//---------------------------------------------------------------------------------------------
+
+
+function taoNhapXuatTon() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  
+  // Lấy các sheet
+  const sheetDMHH = ss.getSheetByName('DMHH');
+  const sheetNXT = ss.getSheetByName('NXT');
+  
+  if (!sheetDMHH || !sheetNXT) {
+    SpreadsheetApp.getUi().alert('Không tìm thấy sheet DMHH hoặc NXT');
+    return;
+  }
+  
+  // Lấy ngày bắt đầu và kết thúc từ sheet NXT
+  const ngayBatDau = new Date(sheetNXT.getRange('O1').getValue());
+  const ngayKetThuc = new Date(sheetNXT.getRange('O2').getValue());
+  
+  // Đọc điều kiện lọc mã kho và mã hàng
+  const maKhoLoc = sheetNXT.getRange('M1').getValue()?.toString().trim() || '';
+  const maHangLoc = sheetNXT.getRange('M2').getValue()?.toString().trim() || '';
+  
+  if (!ngayBatDau || !ngayKetThuc) {
+    SpreadsheetApp.getUi().alert('Vui lòng nhập ngày bắt đầu (O1) và ngày kết thúc (O2) trong sheet NXT');
+    return;
+  }
+  
+  // Thông báo điều kiện lọc
+  let thongBaoLoc = '';
+  if (maKhoLoc && maHangLoc) {
+    thongBaoLoc = `\n🔍 Lọc: Mã kho "${maKhoLoc}" và Mã hàng "${maHangLoc}"`;
+  } else if (maKhoLoc) {
+    thongBaoLoc = `\n🔍 Lọc: Mã kho "${maKhoLoc}"`;
+  } else if (maHangLoc) {
+    thongBaoLoc = `\n🔍 Lọc: Mã hàng "${maHangLoc}"`;
+  } else {
+    thongBaoLoc = '\n🔍 Báo cáo: Toàn bộ kho hàng';
+  }
+  
+  // Lấy dữ liệu từ sheet DMHH
+  const dataDMHH = sheetDMHH.getDataRange().getValues();
+  const headerRowDMHH = 1;
+  
+  // ĐỌC DỮ LIỆU TỪ NHIỀU SHEET DL_* BẰNG UNIVERSAL READER
+  const filterCondition = (row) => {
+    // Chỉ lấy dòng có thông tin hàng hóa
+    return row.maKho && row.maHang && row.soLuong !== 0;
+  };
+  
+  const dataResult = getAllDataFromDLSheets(ss, 'NXT', filterCondition);
+  const combinedData = dataResult.data;
+  
+  // Tạo map để lưu trữ thông tin hàng hóa
+  const hangHoaMap = new Map();
+
+  // Hàm kiểm tra điều kiện lọc
+  function kiemTraDieuKienLoc(maKho, maHang, maKhoLoc, maHangLoc) {
+    // Nếu không có điều kiện lọc nào → hiển thị tất cả
+    if (!maKhoLoc && !maHangLoc) {
+      return true;
+    }
+    
+    // Nếu có cả mã kho và mã hàng → phải khớp cả hai
+    if (maKhoLoc && maHangLoc) {
+      return maKho === maKhoLoc && maHang === maHangLoc;
+    }
+    
+    // Nếu chỉ có mã kho → khớp mã kho
+    if (maKhoLoc && !maHangLoc) {
+      return maKho === maKhoLoc;
+    }
+    
+    // Nếu chỉ có mã hàng → khớp mã hàng
+    if (!maKhoLoc && maHangLoc) {
+      return maHang === maHangLoc;
+    }
+    
+    return false;
+  }
+
+  // Hàm phân loại loại giao dịch
+  function phanLoaiGiaoDich(tkNo, tkCo) {
+    // Ưu tiên xử lý các trường hợp đặc biệt trước
+    
+    // XUẤT_SX: Nợ 154 (ưu tiên cao nhất)
+    if (tkNo.startsWith('154')) {
+      return 'XUAT_SX';
+    }
+    
+    // NHẬP: Có 154 (ưu tiên thứ hai)
+    if (tkCo.startsWith('154')) {
+      return 'NHAP';
+    }
+    
+    // NHẬP: Nợ 15 (không phải 154)  
+    if (tkNo.startsWith('15') && !tkNo.startsWith('154')) {
+      return 'NHAP';
+    }
+    
+    // XUẤT: Có 15 (không phải 154)
+    if (tkCo.startsWith('15') && !tkCo.startsWith('154')) {
+      return 'XUAT';
+    }
+    
+    return null; // Không thuộc nghiệp vụ kho
+  }
+  
+  // BƯỚC 1: Đọc dữ liệu từ DMHH
+  for (let i = headerRowDMHH; i < dataDMHH.length; i++) {
+    const row = dataDMHH[i];
+    const maKho = row[0]?.toString().trim();
+    const maHang = row[1]?.toString().trim();
+    const tenHang = row[2]?.toString().trim();
+    const quyCache = row[3]?.toString().trim();
+    const dvt = row[4]?.toString().trim();
+    const slDauKy = parseFloat(row[5]) || 0;
+    const gtDauKy = parseFloat(row[6]) || 0;
+    
+    // Kiểm tra điều kiện lọc
+    if (maKho && maHang && kiemTraDieuKienLoc(maKho, maHang, maKhoLoc, maHangLoc)) {
+      const key = `${maKho}|${maHang}`;
+      
+      hangHoaMap.set(key, {
+        maKho: maKho,
+        maHang: maHang,
+        tenHang: tenHang,
+        quyCache: quyCache,
+        dvt: dvt,
+        slDauKyGoc: slDauKy,
+        gtDauKyGoc: gtDauKy,
+        // Phát sinh trước kỳ
+        slNhapTruocKy: 0,
+        gtNhapTruocKy: 0,
+        slXuatTruocKy: 0,
+        gtXuatTruocKy: 0,
+        slXuatSXTruocKy: 0,
+        gtXuatSXTruocKy: 0,
+        // Phát sinh trong kỳ
+        slNhapTrongKy: 0,
+        gtNhapTrongKy: 0,
+        slXuatTrongKy: 0,
+        gtXuatTrongKy: 0,
+        slXuatSXTrongKy: 0,
+        gtXuatSXTrongKy: 0
+      });
+    }
+  }
+  
+  // BƯỚC 2: Xử lý dữ liệu phát sinh từ TẤT CẢ CÁC SHEET DL_*
+  let tongGiaoDichTruocKy = 0;
+  let tongGiaoDichTrongKy = 0;
+  let giaoDichKhongLienQuan = 0;
+  let giaoDichKhongKhopLoc = 0;
+  
+  for (let i = 0; i < combinedData.length; i++) {
+    const row = combinedData[i];
+    const ngayHachToan = new Date(row.ngay);
+    const tkNo = row.tkNo?.toString().trim();
+    const tkCo = row.tkCo?.toString().trim();
+    const soTien = parseFloat(row.soTien) || 0;
+    const maKho = row.maKho?.toString().trim();
+    const maHang = row.maHang?.toString().trim();
+    const soLuong = parseFloat(row.soLuong) || 0;
+    const donGia = parseFloat(row.donGia) || 0;
+    
+    const key = `${maKho}|${maHang}`;
+    const loaiGiaoDich = phanLoaiGiaoDich(tkNo, tkCo);
+    
+    // Bỏ qua giao dịch không liên quan đến kho
+    if (loaiGiaoDich === null) {
+      giaoDichKhongLienQuan++;
+      continue;
+    }
+    
+    // Kiểm tra điều kiện lọc
+    if (!kiemTraDieuKienLoc(maKho, maHang, maKhoLoc, maHangLoc)) {
+      giaoDichKhongKhopLoc++;
+      continue;
+    }
+    
+    // Tạo bản ghi hàng hóa nếu chưa tồn tại
+    if (!hangHoaMap.has(key)) {
+      hangHoaMap.set(key, {
+        maKho: maKho,
+        maHang: maHang,
+        tenHang: `Hàng ${maHang}`,
+        quyCache: '',
+        dvt: '',
+        slDauKyGoc: 0,
+        gtDauKyGoc: 0,
+        slNhapTruocKy: 0,
+        gtNhapTruocKy: 0,
+        slXuatTruocKy: 0,
+        gtXuatTruocKy: 0,
+        slXuatSXTruocKy: 0,
+        gtXuatSXTruocKy: 0,
+        slNhapTrongKy: 0,
+        gtNhapTrongKy: 0,
+        slXuatTrongKy: 0,
+        gtXuatTrongKy: 0,
+        slXuatSXTrongKy: 0,
+        gtXuatSXTrongKy: 0
+      });
+    }
+    
+    const hangHoa = hangHoaMap.get(key);
+    const laGiaoDichTruocKy = ngayHachToan < ngayBatDau;
+    const laGiaoDichTrongKy = ngayHachToan >= ngayBatDau && ngayHachToan <= ngayKetThuc;
+    
+    if (laGiaoDichTruocKy || laGiaoDichTrongKy) {
+      
+      if (laGiaoDichTruocKy) {
+        // Phát sinh trước kỳ báo cáo
+        switch (loaiGiaoDich) {
+          case 'NHAP':
+            hangHoa.slNhapTruocKy += soLuong;
+            hangHoa.gtNhapTruocKy += soTien;
+            break;
+          case 'XUAT':
+            hangHoa.slXuatTruocKy += soLuong;
+            hangHoa.gtXuatTruocKy += soTien;
+            break;
+          case 'XUAT_SX':
+            hangHoa.slXuatSXTruocKy += soLuong;
+            hangHoa.gtXuatSXTruocKy += soTien;
+            break;
+        }
+        tongGiaoDichTruocKy++;
+      } else {
+        // Phát sinh trong kỳ báo cáo
+        switch (loaiGiaoDich) {
+          case 'NHAP':
+            hangHoa.slNhapTrongKy += soLuong;
+            hangHoa.gtNhapTrongKy += soTien;
+            break;
+          case 'XUAT':
+            hangHoa.slXuatTrongKy += soLuong;
+            hangHoa.gtXuatTrongKy += soTien;
+            break;
+          case 'XUAT_SX':
+            hangHoa.slXuatSXTrongKy += soLuong;
+            hangHoa.gtXuatSXTrongKy += soTien;
+            break;
+        }
+        tongGiaoDichTrongKy++;
+      }
+    }
+  }
+  
+  // BƯỚC 3: Lọc bỏ hàng hóa không có dữ liệu
+  function kiemTraHangHoaCoData(hangHoa) {
+    // Tính tồn đầu kỳ báo cáo
+    const slTonDauKyBaoCao = hangHoa.slDauKyGoc + hangHoa.slNhapTruocKy - hangHoa.slXuatTruocKy - hangHoa.slXuatSXTruocKy;
+    const gtTonDauKyBaoCao = hangHoa.gtDauKyGoc + hangHoa.gtNhapTruocKy - hangHoa.gtXuatTruocKy - hangHoa.gtXuatSXTruocKy;
+    
+    return (slTonDauKyBaoCao !== 0 || 
+            gtTonDauKyBaoCao !== 0 || 
+            hangHoa.slNhapTrongKy !== 0 || 
+            hangHoa.gtNhapTrongKy !== 0 ||
+            hangHoa.slXuatTrongKy !== 0 || 
+            hangHoa.gtXuatTrongKy !== 0 ||
+            hangHoa.slXuatSXTrongKy !== 0 || 
+            hangHoa.gtXuatSXTrongKy !== 0);
+  }
+  
+  const hangHoaCoData = new Map();
+  for (const [key, hangHoa] of hangHoaMap.entries()) {
+    if (kiemTraHangHoaCoData(hangHoa)) {
+      hangHoaCoData.set(key, hangHoa);
+    }
+  }
+  
+  // Tạo header cho bảng NXT (2 dòng)
+  const headers1 = [
+    'Mã kho', 'Mã hàng', 'Tên hàng', 'Quy cách', 'ĐVT', 
+    'Tồn đầu kỳ', '', 'Nhập trong kỳ', '', 'Xuất trong kỳ', '', 
+    'Xuất SX trong kỳ', '', 'Tồn cuối kỳ', '', 'Ghi chú'
+  ];
+  
+  const headers2 = [
+    '', '', '', '', '', 
+    'SL', 'Tiền', 'SL', 'Tiền', 'SL', 'Tiền', 
+    'SL', 'Tiền', 'SL', 'Tiền', ''
+  ];
+  
+  // Xóa dữ liệu cũ từ dòng 4 trở đi
+  const lastRow = sheetNXT.getLastRow();
+  if (lastRow >= 6) {
+    sheetNXT.getRange(6, 1, lastRow - 5, 16).clear();
+  }
+  
+  // Ghi header (dòng 4 và 5)
+  sheetNXT.getRange(4, 1, 1, headers1.length).setValues([headers1]);
+  sheetNXT.getRange(5, 1, 1, headers2.length).setValues([headers2]);
+  
+  // Merge cells cho header
+  const mergeCells = [
+    [4, 1, 2, 1], // Mã kho
+    [4, 2, 2, 1], // Mã hàng  
+    [4, 3, 2, 1], // Tên hàng
+    [4, 4, 2, 1], // Quy cách
+    [4, 5, 2, 1], // ĐVT
+    [4, 6, 1, 2], // Tồn đầu kỳ
+    [4, 8, 1, 2], // Nhập trong kỳ
+    [4, 10, 1, 2], // Xuất trong kỳ
+    [4, 12, 1, 2], // Xuất SX trong kỳ
+    [4, 14, 1, 2], // Tồn cuối kỳ
+    [4, 16, 2, 1]  // Ghi chú
+  ];
+  
+  for (const [row, col, numRows, numCols] of mergeCells) {
+    sheetNXT.getRange(row, col, numRows, numCols).merge();
+  }
+  
+  // Chuẩn bị dữ liệu để ghi
+  const outputData = [];
+  const finalSorted = Array.from(hangHoaCoData.entries()).sort((a, b) => {
+    const [keyA] = a;
+    const [keyB] = b;
+    return keyA.localeCompare(keyB);
+  });
+  
+  for (const [key, hangHoa] of finalSorted) {
+    // Tính tồn đầu kỳ báo cáo (gốc + phát sinh trước kỳ)
+    const slTonDauKyBaoCao = hangHoa.slDauKyGoc + hangHoa.slNhapTruocKy - hangHoa.slXuatTruocKy - hangHoa.slXuatSXTruocKy;
+    const gtTonDauKyBaoCao = hangHoa.gtDauKyGoc + hangHoa.gtNhapTruocKy - hangHoa.gtXuatTruocKy - hangHoa.gtXuatSXTruocKy;
+    
+    // Tính tồn cuối kỳ
+    const slTonCuoiKy = slTonDauKyBaoCao + hangHoa.slNhapTrongKy - hangHoa.slXuatTrongKy - hangHoa.slXuatSXTrongKy;
+    const gtTonCuoiKy = gtTonDauKyBaoCao + hangHoa.gtNhapTrongKy - hangHoa.gtXuatTrongKy - hangHoa.gtXuatSXTrongKy;
+    
+    outputData.push([
+      hangHoa.maKho,
+      hangHoa.maHang,
+      hangHoa.tenHang,
+      hangHoa.quyCache,
+      hangHoa.dvt,
+      slTonDauKyBaoCao,           // Tồn đầu kỳ SL
+      gtTonDauKyBaoCao,           // Tồn đầu kỳ Tiền  
+      hangHoa.slNhapTrongKy,      // Nhập SL
+      hangHoa.gtNhapTrongKy,      // Nhập Tiền
+      hangHoa.slXuatTrongKy,      // Xuất SL
+      hangHoa.gtXuatTrongKy,      // Xuất Tiền
+      hangHoa.slXuatSXTrongKy,    // Xuất SX SL
+      hangHoa.gtXuatSXTrongKy,    // Xuất SX Tiền
+      slTonCuoiKy,                // Tồn cuối kỳ SL
+      gtTonCuoiKy,                // Tồn cuối kỳ Tiền
+      ''                          // Ghi chú
+    ]);
+  }
+  
+  // Ghi dữ liệu vào sheet NXT từ dòng 6
+  if (outputData.length > 0) {
+    sheetNXT.getRange(6, 1, outputData.length, 16).setValues(outputData);
+    
+    // Định dạng số
+    // Số lượng: 2 chữ số thập phân
+    const slColumns = [6, 8, 10, 12, 14]; // Cột số lượng
+    for (const col of slColumns) {
+      sheetNXT.getRange(6, col, outputData.length, 1).setNumberFormat('#,##0.00');
+    }
+    
+    // Tiền: không thập phân
+    const tienColumns = [7, 9, 11, 13, 15]; // Cột tiền
+    for (const col of tienColumns) {
+      sheetNXT.getRange(6, col, outputData.length, 1).setNumberFormat('#,##0');
+    }
+    
+    // Định dạng header
+    const headerRange = sheetNXT.getRange(4, 1, 2, 16);
+    headerRange.setBackground('#4472C4');
+    headerRange.setFontColor('white');
+    headerRange.setFontWeight('bold');
+    headerRange.setHorizontalAlignment('center');
+    headerRange.setVerticalAlignment('middle');
+    
+    // Tạo border cho toàn bộ bảng
+    const allDataRange = sheetNXT.getRange(4, 1, outputData.length + 2, 16);
+    allDataRange.setBorder(true, true, true, true, true, true);
+  }
+  
+  const tongHangHoa = Array.from(hangHoaMap.entries()).length;
+  const hangHoaHienThi = outputData.length;
+  const hangHoaBoQua = tongHangHoa - hangHoaHienThi;
+  
+  // Thông tin về sheets đã xử lý
+  const sheetInfo = createDataSummary(ss, 'NXT');
+  
+  SpreadsheetApp.getUi().alert(`✅ Báo cáo Nhập Xuất Tồn đã hoàn thành!${thongBaoLoc}\n\n📊 Thống kê:\n- Hiển thị: ${hangHoaHienThi} mặt hàng\n- Bỏ qua: ${hangHoaBoQua} mặt hàng (không có dữ liệu)\n- Giao dịch trước kỳ: ${tongGiaoDichTruocKy}\n- Giao dịch trong kỳ: ${tongGiaoDichTrongKy}\n- Giao dịch không liên quan: ${giaoDichKhongLienQuan}\n- Giao dịch không khớp lọc: ${giaoDichKhongKhopLoc}\n\n📋 Nguồn dữ liệu:\n${sheetInfo}\n\n📅 Kỳ báo cáo: ${ngayBatDau.toLocaleDateString('vi-VN')} → ${ngayKetThuc.toLocaleDateString('vi-VN')}`);
+}
+
+
+
+// ==================== CÁC HÀM KHÁC GIỮ NGUYÊN ====================
+
+function openAccountFilter() {
+  const html = HtmlService.createTemplateFromFile('sidebarLocCDPS');
+  html.accounts = getLevel1Accounts();
+  html.selectedAccounts = getSelectedAccounts();
+  
+  const htmlOutput = html.evaluate()
+    .setWidth(350)
+    .setTitle('🏦 Lọc Tài khoản Cấp 1');
+  
+  SpreadsheetApp.getUi().showSidebar(htmlOutput);
+}
+
+function getLevel1Accounts() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheetDMTK = ss.getSheetByName('DMTK');
+  
+  if (!sheetDMTK) return [];
+  
+  const data = sheetDMTK.getDataRange().getValues();
+  const level1Accounts = [];
+  
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    const maTK = row[0]?.toString().trim();
+    const tenTK = row[1]?.toString().trim();
+    const loaiTK = parseInt(row[2]) || 0;
+    
+    if (maTK && loaiTK === 1) {
+      level1Accounts.push({
+        ma: maTK,
+        ten: tenTK
+      });
+    }
+  }
+  
+  return level1Accounts.sort((a, b) => a.ma.localeCompare(b.ma));
+}
+
+function getSelectedAccounts() {
+  const selected = PropertiesService.getDocumentProperties().getProperty('selectedAccounts');
+  return selected ? JSON.parse(selected) : [];
+}
+
+function saveSelectedAccounts(selectedAccounts) {
+  PropertiesService.getDocumentProperties().setProperty('selectedAccounts', JSON.stringify(selectedAccounts));
+  return true;
+}
+
+function clearAccountFilter() {
+  PropertiesService.getDocumentProperties().deleteProperty('selectedAccounts');
+  return true;
+}
+
+
+/**
+ * HÀM CHÍNH V2: Tạo báo cáo Sổ chi tiết, nhận tham số từ sidebar.
+ */
+function taoSoChiTietTaiKhoan_V2(startDateStr, endDateStr, taiKhoanCanXem) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ui = SpreadsheetApp.getUi();
+
+  try {
+    const ngayBatDau = new Date(startDateStr);
+    ngayBatDau.setHours(0, 0, 0, 0);
+    const ngayKetThuc = new Date(endDateStr);
+    ngayKetThuc.setHours(23, 59, 59, 999);
+
+    // Các bước còn lại giống hệt hàm cũ
+    const sheetSoCT = ss.getSheetByName('SO_CT');
+    if (!sheetSoCT) throw new Error('Không tìm thấy sheet báo cáo "SO_CT"');
+
+    ss.toast('Bắt đầu xử lý...', 'Sổ Chi Tiết', -1);
+    ss.toast('Đang đọc dữ liệu từ DMTK và các sheet DL_...', 'Bước 1/4');
+
+    const sheetDMTK = ss.getSheetByName('DMTK');
+    if (!sheetDMTK) throw new Error('Không tìm thấy sheet "DMTK"');
+    const dataDMTK = sheetDMTK.getDataRange().getValues();
+    const taiKhoanMap = new Map();
+    dataDMTK.slice(1).forEach(row => {
+      const maTK = row[0]?.toString().trim();
+      if (maTK) {
+        taiKhoanMap.set(maTK, { ten: row[1]?.toString().trim(), loai: parseInt(row[2]) || 0, duNoGoc: parseFloat(row[3]) || 0, duCoGoc: parseFloat(row[4]) || 0 });
+      }
+    });
+
+    const allTransactionsRaw = readDataFromPrefixedSheets(ss, 'DL_', ['NGAY_HT', 'TK_NO', 'TK_CO', 'SO_TIEN']);
+    const allTransactions = xuLyGiaoDichVaThue(allTransactionsRaw);
+
+    ss.toast('Đang tính toán số dư và phát sinh...', 'Bước 2/4');
+    const outputData = [];
+    const headers = ['Ngày Ghi Sổ', 'Số Chứng Từ', 'Ngày Chứng Từ', 'Diễn Giải', 'TK Đối Ứng', 'Phát Sinh Nợ', 'Phát Sinh Có', 'Dư Nợ Cuối Kỳ', 'Dư Có Cuối Kỳ'];
+
+    for (const tk of taiKhoanCanXem) {
+      if (!taiKhoanMap.has(tk)) continue;
+      const tkInfo = taiKhoanMap.get(tk);
+
+      outputData.push([`SỔ CHI TIẾT TÀI KHOẢN: ${tk} - ${tkInfo.ten}`, '', '', '', '', '', '', '', '']);
+      outputData.push(headers);
+
+      let duNo = tkInfo.duNoGoc;
+      let duCo = tkInfo.duCoGoc;
+      allTransactions.forEach(trans => {
+        if (new Date(trans.NGAY_HT) < ngayBatDau) {
+          if (trans.TK_NO === tk) duNo += trans.SO_TIEN;
+          if (trans.TK_CO === tk) duCo += trans.SO_TIEN;
+        }
+      });
+      let [duNoDauKy, duCoDauKy] = tinhSoDu(duNo, duCo);
+      outputData.push(['', '', '', 'Số dư đầu kỳ', '', '', '', duNoDauKy, duCoDauKy]);
+
+      let duNoCuoiKy = duNoDauKy;
+      let duCoCuoiKy = duCoDauKy;
+      let tongPhatSinhNo = 0;
+      let tongPhatSinhCo = 0;
+
+      const transactionsInPeriod = allTransactions
+        .filter(t => new Date(t.NGAY_HT) >= ngayBatDau && new Date(t.NGAY_HT) <= ngayKetThuc && (t.TK_NO === tk || t.TK_CO === tk))
+        .sort((a,b) => new Date(a.NGAY_HT) - new Date(b.NGAY_HT));
+
+      transactionsInPeriod.forEach(trans => {
+          const phatSinhNo = (trans.TK_NO === tk) ? trans.SO_TIEN : 0;
+          const phatSinhCo = (trans.TK_CO === tk) ? trans.SO_TIEN : 0;
+          const tkDoiUng = (trans.TK_NO === tk) ? trans.TK_CO : trans.TK_NO;
+
+          tongPhatSinhNo += phatSinhNo;
+          tongPhatSinhCo += phatSinhCo;
+
+          let finalDienGiai = trans.DIEN_GIAI || '';
+          const tenHang = trans.TEN_HANG?.toString().trim();
+          const quyCach = trans.QUY_CACH?.toString().trim();
+          if (tenHang) finalDienGiai += ` - ${tenHang}`;
+          if (quyCach) finalDienGiai += ` (${quyCach})`;
+
+          let duNoMoi = duNoCuoiKy + phatSinhNo;
+          let duCoMoi = duCoCuoiKy + phatSinhCo;
+          [duNoCuoiKy, duCoCuoiKy] = tinhSoDu(duNoMoi, duCoMoi);
+
+          outputData.push([ new Date(trans.NGAY_HT), trans.SO_CT || '', trans.NGAY_CT ? new Date(trans.NGAY_CT) : '', finalDienGiai, tkDoiUng, phatSinhNo, phatSinhCo, duNoCuoiKy, duCoCuoiKy ]);
+        });
+
+      outputData.push(['', '', '', 'Cộng phát sinh trong kỳ', '', tongPhatSinhNo, tongPhatSinhCo, '', '']);
+      outputData.push(['', '', '', 'Số dư cuối kỳ', '', '', '', duNoCuoiKy, duCoCuoiKy]);
+      outputData.push(['', '', '', '', '', '', '', '', '']);
+    }
+
+    ss.toast('Đang ghi dữ liệu ra báo cáo...', 'Bước 3/4');
+    if(sheetSoCT.getLastRow() >= 1) { // Xóa toàn bộ sheet để ghi lại
+        sheetSoCT.clear();
+    }
+
+    if (outputData.length > 0) {
+      sheetSoCT.getRange(1, 1, outputData.length, 9).setValues(outputData);
+    }
+
+    ss.toast('Đang định dạng báo cáo...', 'Bước 4/4');
+    for (let i = 0; i < outputData.length; i++) {
+        const currentRow = i + 1;
+        const rowData = outputData[i];
+        const dienGiai = rowData[3]?.toString() || '';
+
+        if (dienGiai.startsWith('SỔ CHI TIẾT TÀI KHOẢN')) {
+            sheetSoCT.getRange(currentRow, 1, 1, 9).merge().setFontWeight('bold').setBackground('#c9daf8').setHorizontalAlignment('center');
+        } else if (rowData[0] === 'Ngày Ghi Sổ') {
+            sheetSoCT.getRange(currentRow, 1, 1, 9).setFontWeight('bold').setBackground('#4a86e8').setFontColor('white');
+        } else if (dienGiai.includes('Số dư đầu kỳ') || dienGiai.includes('Cộng phát sinh') || dienGiai.includes('Số dư cuối kỳ')) {
+             sheetSoCT.getRange(currentRow, 4, 1, 6).setFontWeight('bold');
+        }
+    }
+
+    ss.toast('Hoàn thành!', 'Thành công', 5);
+    // Không cần alert nữa vì người dùng vẫn ở trên sidebar
+  } catch (e) {
+    console.error("LỖI TẠO SỔ CHI TIẾT: " + e.toString() + e.stack);
+    // Ném lỗi lại để sidebar có thể bắt được và hiển thị cho người dùng
+    throw new Error('Lỗi khi tạo báo cáo: ' + e.toString());
+  }
+}
+
+/**
+ * HÀM PHỤ: Xử lý danh sách giao dịch thô, tạo ra các bút toán thuế GTGT ảo.
+ */
+function xuLyGiaoDichVaThue(transactionsRaw) {
+  const finalTransactions = [];
+  for (const trans of transactionsRaw) {
+    const soTien = parseFloat(trans.SO_TIEN) || 0;
+    const thueVAT = parseFloat(trans.THUE_VAT) || 0;
+    const tkNo = trans.TK_NO?.toString().trim();
+    const tkCo = trans.TK_CO?.toString().trim();
+    
+    if (soTien > 0 && tkNo && tkCo) {
+      finalTransactions.push({ ...trans, SO_TIEN: soTien });
+    }
+
+    if (thueVAT > 0) {
+      const dauSoNo = tkNo.charAt(0);
+      const dauSoCo = tkCo.charAt(0);
+      let butToanThue = null;
+
+      if (['1', '2', '6', '8'].includes(dauSoNo)) {
+        butToanThue = { ...trans, TK_NO: '1331', TK_CO: tkCo, SO_TIEN: thueVAT, DIEN_GIAI: `Thuế GTGT của ${trans.DIEN_GIAI || 'chứng từ ' + trans.SO_CT}` };
+      } 
+      else if (['5', '7'].includes(dauSoCo)) {
+        butToanThue = { ...trans, TK_NO: tkNo, TK_CO: '33311', SO_TIEN: thueVAT, DIEN_GIAI: `Thuế GTGT của ${trans.DIEN_GIAI || 'chứng từ ' + trans.SO_CT}` };
+      }
+      
+      if(butToanThue) {
+        finalTransactions.push(butToanThue);
+      }
+    }
+  }
+  return finalTransactions;
+}
+
+/**
+ * HÀM PHỤ: Tính toán số dư cuối kỳ từ tổng nợ và tổng có.
+ */
+function tinhSoDu(tongNo, tongCo) {
+  if (tongNo > tongCo) {
+    return [tongNo - tongCo, 0];
+  } else {
+    return [0, tongCo - tongNo];
+  }
+}
+/**
+ * Lấy toàn bộ danh sách tài khoản từ DMTK để hiển thị trên sidebar.
+ */
+function getAccountsForSidebar() {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheetDMTK = ss.getSheetByName('DMTK');
+    if (!sheetDMTK) return [];
+
+    const data = sheetDMTK.getDataRange().getValues();
+    const accounts = [];
+    for (let i = 1; i < data.length; i++) {
+      const maTK = data[i][0]?.toString().trim();
+      const tenTK = data[i][1]?.toString().trim();
+      if (maTK && tenTK) {
+        accounts.push({ ma: maTK, ten: tenTK });
+      }
+    }
+    return accounts.sort((a, b) => a.ma.localeCompare(b.ma));
+  } catch (e) {
+    console.error("Lỗi khi lấy danh sách tài khoản: " + e.toString());
+    return [];
+  }
+}
+
+/**
+ * Hàm mới để mở sidebar Sổ chi tiết
+ */
+function moSidebarSoChiTiet() {
+  const html = HtmlService.createHtmlOutputFromFile('sidebarSoChiTiet')
+    .setWidth(400)
+    .setTitle('📖 Tùy chọn Sổ Chi Tiết');
+  SpreadsheetApp.getUi().showSidebar(html);
+}
+
+// ==================== SIDEBAR TÀI KHOẢN - GIẢI PHÁP 1 ====================
+
+// Hàm mở sidebar tài khoản (đã đơn giản hóa)
+function moSidebarTaiKhoan() {
+  const html = HtmlService.createHtmlOutputFromFile('sidebarTaiKhoan') // Tên file HTML của bạn
+    .setWidth(400)
+    .setTitle('💼 Chọn Tài khoản');
+  SpreadsheetApp.getUi().showSidebar(html);
+}
+
+// Lấy dữ liệu tài khoản cho sidebar (đã đơn giản hóa)
+function getTaiKhoanDataForSidebar() {
+  // Lấy ra bộ nhớ đệm của script
+  const cache = CacheService.getScriptCache();
+  const CACHE_KEY = 'DANH_SACH_TAI_KHOAN';
+
+  // 1. Thử lấy dữ liệu từ cache trước
+  const cachedData = cache.get(CACHE_KEY);
+  if (cachedData != null) {
+    console.log('✅ Loaded accounts from CACHE.');
+    // Nếu có, giải nén và trả về ngay lập tức
+    return {
+      accounts: JSON.parse(cachedData)
+    };
+  }
+
+  // 2. Nếu cache không có, đọc từ Sheet như bình thường
+  console.log('⚠️ Cache miss. Reading accounts from Sheet.');
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheetDMTK = ss.getSheetByName('DMTK');
+  
+  if (!sheetDMTK) {
+    throw new Error('Không tìm thấy sheet DMTK');
+  }
+  
+  try {
+    const data = sheetDMTK.getDataRange().getValues();
+    const accounts = [];
+    
+    // Bỏ qua dòng tiêu đề (i = 1)
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i];
+      const ma = row[0]?.toString().trim();
+      const ten = row[1]?.toString().trim();
+      const loai = row[2] || null;
+      if (ma && ten) {
+        accounts.push({ ma, ten, loai });
+      }
+    }
+    
+    accounts.sort((a, b) => a.ma.localeCompare(b.ma));
+    
+    // 3. Lưu dữ liệu vào cache cho lần sử dụng tiếp theo
+    // Dữ liệu sẽ được lưu trong 15 phút (900 giây)
+    cache.put(CACHE_KEY, JSON.stringify(accounts), 900);
+    console.log(`✅ Loaded and cached ${accounts.length} accounts.`);
+    
+    return {
+      accounts: accounts
+    };
+    
+  } catch (error) {
+    console.error('Lỗi lấy dữ liệu tài khoản:', error.toString());
+    throw new Error('Không thể lấy dữ liệu tài khoản: ' + error.toString());
+  }
+}
+
+/**
+ * **SỬA LỖI**: Ghi tài khoản vào Ô ĐANG HOẠT ĐỘNG (ACTIVE CELL) mới nhất.
+ * Hàm này không còn nhận tham số 'context' từ sidebar nữa.
+ * Nó sẽ tự động xác định ô người dùng đang chọn và ghi dữ liệu vào đó.
+ */
+function ghiTaiKhoanVaoCell(maTK) {
+  try {
+    // 1. Kiểm tra đầu vào
+    if (!maTK || typeof maTK !== 'string' || maTK.trim() === '') {
+      return { success: false, error: 'Mã tài khoản không hợp lệ' };
+    }
+    
+    // 2. Lấy ô đang hoạt động (active cell) mới nhất
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const activeCell = ss.getActiveCell();
+
+    if (!activeCell) {
+      return { 
+        success: false, 
+        error: 'Không thể xác định vị trí cell. Vui lòng chọn một cell trước.' 
+      };
+    }
+    
+    // 3. Ghi dữ liệu vào ô
+    const maTKTrimmed = maTK.trim();
+    activeCell.setValue(maTKTrimmed);
+    
+    const cellAddress = activeCell.getA1Notation();
+    const sheetName = activeCell.getSheet().getName();
+    console.log(`✅ Written "${maTKTrimmed}" to ${sheetName}!${cellAddress}`);
+    
+    // (Tùy chọn) Lưu tài khoản gần đây - không ảnh hưởng logic chính
+    saveRecentAccount(maTKTrimmed);
+
+    return { success: true };
+
+  } catch (error) {
+    const errorMessage = `Lỗi hệ thống: ${error.toString()}`;
+    console.error('❌ Error in ghiTaiKhoanVaoCell:', errorMessage);
+    return { 
+      success: false, 
+      error: errorMessage 
+    };
+  }
+}
+
+// Hàm lưu tài khoản gần đây (giữ nguyên, không cần sửa)
+function saveRecentAccount(maTK) {
+  try {
+    const properties = PropertiesService.getDocumentProperties();
+    let recentAccounts = [];
+    const recentData = properties.getProperty('RECENT_ACCOUNTS');
+    if (recentData) {
+      recentAccounts = JSON.parse(recentData);
+    }
+    recentAccounts = recentAccounts.filter(acc => acc !== maTK);
+    recentAccounts.unshift(maTK);
+    if (recentAccounts.length > 10) {
+      recentAccounts = recentAccounts.slice(0, 10);
+    }
+    properties.setProperty('RECENT_ACCOUNTS', JSON.stringify(recentAccounts));
+    return true;
+  } catch (error) {
+    console.error('Lỗi lưu recent account:', error.toString());
+    return false;
+  }
+}
+
+// Thêm hàm này vào file .gs của bạn
+function clearAccountCache() {
+  CacheService.getScriptCache().remove('DANH_SACH_TAI_KHOAN');
+  console.log('🧹 Account cache cleared.');
+}
