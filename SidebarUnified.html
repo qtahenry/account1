@@ -270,17 +270,81 @@
       font-size: 12px;
       color: #1a73e8;
     }
+
+    /* CSS cho tab hàng hóa */
+    .hanghoa-list {
+      max-height: 300px;
+      overflow-y: auto;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      border: 1px solid #dadce0;
+    }
+
+    .hanghoa-item {
+      display: flex;
+      align-items: flex-start;
+      padding: 10px 12px;
+      border-bottom: 1px solid #f0f0f0;
+      transition: background-color 0.15s;
+    }
+
+    .hanghoa-item:last-child {
+      border-bottom: none;
+    }
+
+    .hanghoa-item:hover {
+      background-color: #e6f4ea;
+    }
+
+    .hanghoa-item input[type="checkbox"] {
+      margin-right: 12px;
+      margin-top: 4px;
+      transform: scale(1.1);
+      accent-color: #34a853;
+    }
+
+    .hanghoa-info {
+      flex: 1;
+    }
+
+    .hanghoa-name {
+      font-weight: 500;
+      color: #202124;
+      margin-bottom: 2px;
+    }
+
+    .hanghoa-code {
+      font-size: 11px;
+      color: #5f6368;
+      margin-bottom: 2px;
+    }
+
+    .hanghoa-code .ma-kho {
+      background: #e8f0fe;
+      color: #1a73e8;
+      padding: 2px 6px;
+      border-radius: 10px;
+      font-size: 10px;
+      margin-right: 5px;
+    }
+
+    .hanghoa-details {
+      font-size: 10px;
+      color: #80868b;
+    }
   </style>
 </head>
 <body>
 
 
   <div class="tab-container">
-    <button class="tab active" onclick="switchTab('main')">💼 Tài Khoản & Báo Cáo</button>
-    <button class="tab" onclick="switchTab('write')">✍️ Ghi Tài Khoản</button>
+    <button class="tab active" onclick="switchTab('main')">📊 Báo Cáo Kế Toán</button>
+    <button class="tab" onclick="switchTab('hanghoa')">📦 Báo Cáo Kho</button>
+    <button class="tab" onclick="switchTab('write')">✏️ Danh Mục Tài Khoản</button>
   </div>
 
-  <!-- TAB TÀI KHOẢN & BÁO CÁO -->
+  <!-- TAB BÁO CÁO KẾ TOÁN -->
   <div id="main" class="tab-content active">
     <div class="section">
       <div class="section-title">🔍 Tìm Kiếm Tài Khoản</div>
@@ -327,7 +391,7 @@
     </div>
   </div>
 
-  <!-- TAB GHI TÀI KHOẢN -->
+  <!-- TAB DANH MỤC TÀI KHOẢN -->
   <div id="write" class="tab-content">
     <div class="info-box">
       💡 <strong>Hướng dẫn:</strong> Chọn tài khoản từ danh sách bên dưới để ghi vào ô đang được chọn trong sheet
@@ -350,10 +414,62 @@
     </div>
   </div>
 
+  <!-- TAB BÁO CÁO KHO -->
+  <div id="hanghoa" class="tab-content">
+
+    <div class="section">
+      <div class="section-title">🔍 Tìm Kiếm Hàng Hóa</div>
+      <div class="search-box">
+        <input type="text" id="hanghoaSearchInput" class="search-input" placeholder="🔍 Tìm theo mã kho, mã hàng, tên hàng..." oninput="filterHangHoa()">
+        <span class="search-icon">🔍</span>
+        <span class="clear-search" onclick="clearHangHoaSearch()" title="Xóa tìm kiếm">✕</span>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">📦 Danh Sách Hàng Hóa</div>
+      <div class="select-all-controls">
+        <button class="btn-small" onclick="selectAllHangHoa()">✅ Chọn Tất Cả</button>
+        <button class="btn-small" onclick="deselectAllHangHoa()">❌ Bỏ Chọn Tất Cả</button>
+      </div>
+      <div class="hanghoa-list" id="hanghoaList">
+        <div id="loadingHangHoa" style="padding: 20px; text-align: center; color: #5f6368;">Đang tải danh sách hàng hóa...</div>
+      </div>
+    </div>
+
+    <div class="status" id="hanghoaStatus" style="display:none;">Đã chọn: 0 hàng hóa</div>
+
+    <div class="section">
+      <div class="section-title">📅 Kỳ Báo Cáo</div>
+      <div class="date-inputs">
+        <div>
+          <label for="hanghoaStartDate">Từ ngày</label>
+          <input type="date" id="hanghoaStartDate">
+        </div>
+        <div>
+          <label for="hanghoaEndDate">Đến ngày</label>
+          <input type="date" id="hanghoaEndDate">
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">🎯 Thao Tác</div>
+      <div class="actions">
+        <button class="btn btn-primary" id="applyHangHoaBtn" onclick="applyHangHoaSelection()">✅ Ghi dữ liệu</button>
+        <button class="btn btn-secondary" onclick="createNhapXuatTon()">📊 Tạo Báo Cáo NXT</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     let allAccounts = [];
     let selectedAccounts = [];
     let currentTab = 'main';
+    
+    // Biến cho hàng hóa
+    let allHangHoa = [];
+    let selectedHangHoaIds = new Set();
 
     window.onload = function() {
       // Tải ngày báo cáo đã lưu trước đó hoặc sử dụng mặc định
@@ -362,6 +478,9 @@
       // Tải danh sách tài khoản
       loadAccounts();
       loadAllAccounts();
+      
+      // Tải danh sách hàng hóa
+      loadHangHoa();
     };
 
     function switchTab(tabName) {
@@ -409,6 +528,9 @@
           // Sử dụng ngày đã lưu trước đó
           document.getElementById('startDate').value = dates.startDate;
           document.getElementById('endDate').value = dates.endDate;
+          // Cập nhật ngày cho tab hàng hóa
+          document.getElementById('hanghoaStartDate').value = dates.startDate;
+          document.getElementById('hanghoaEndDate').value = dates.endDate;
         } else {
           // Sử dụng ngày mặc định (tháng hiện tại)
           const today = new Date();
@@ -416,6 +538,8 @@
           const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
           document.getElementById('startDate').valueAsDate = firstDay;
           document.getElementById('endDate').valueAsDate = lastDay;
+          document.getElementById('hanghoaStartDate').valueAsDate = firstDay;
+          document.getElementById('hanghoaEndDate').valueAsDate = lastDay;
         }
       }).withFailureHandler(err => {
         // Nếu có lỗi, sử dụng ngày mặc định
@@ -424,10 +548,19 @@
         const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
         document.getElementById('startDate').valueAsDate = firstDay;
         document.getElementById('endDate').valueAsDate = lastDay;
+        document.getElementById('hanghoaStartDate').valueAsDate = firstDay;
+        document.getElementById('hanghoaEndDate').valueAsDate = lastDay;
       }).getReportDates();
     }
 
-
+    function loadHangHoa() {
+      google.script.run.withSuccessHandler(hangHoa => {
+        allHangHoa = hangHoa;
+        renderHangHoaList(allHangHoa);
+      }).withFailureHandler(err => {
+        document.getElementById('loadingHangHoa').textContent = 'Lỗi tải dữ liệu hàng hóa.';
+      }).getHangHoaForSidebar();
+    }
 
     function renderAccountList(accounts) {
       const listElement = document.getElementById('accountList');
@@ -473,8 +606,6 @@
       });
       listElement.innerHTML = html;
     }
-
-
 
     function filterAccounts() {
       const searchTerm = document.getElementById('searchInput').value.toLowerCase();
@@ -546,7 +677,12 @@
 
     function updateStatus() {
       const statusElement = document.getElementById('status');
-      statusElement.textContent = `Đã chọn: ${selectedAccounts.length} tài khoản`;
+      if (selectedAccounts.length > 0) {
+        statusElement.textContent = `Đã chọn: ${selectedAccounts.length} tài khoản`;
+        statusElement.style.display = 'block';
+      } else {
+        statusElement.style.display = 'none';
+      }
       
       // Lưu vào properties service
       google.script.run.saveSelectedAccounts(selectedAccounts);
@@ -591,14 +727,40 @@
       // Lưu ngày báo cáo và tạo báo cáo ngay lập tức
       saveReportDates(startDate, endDate);
       
+      // Hiển thị tiến trình xử lý
+      const statusElement = document.getElementById('status');
+      statusElement.textContent = `🔄 Đang tạo báo cáo Cân đối Phát sinh...`;
+      statusElement.style.background = '#fff3cd';
+      statusElement.style.borderColor = '#ffc107';
+      statusElement.style.color = '#856404';
+      statusElement.style.display = 'block';
+      
       // Chạy báo cáo CDPS với ngày tháng từ sidebar
       google.script.run.withSuccessHandler(() => {
         console.log('✅ Báo cáo Cân đối Phát sinh đã hoàn thành');
-        // Cập nhật trạng thái sau khi hoàn thành
-        updateStatus();
+        // Hiển thị thông báo thành công
+        statusElement.textContent = `✅ Đã tạo báo cáo Cân đối Phát sinh`;
+        statusElement.style.background = '#e6f4ea';
+        statusElement.style.borderColor = '#34a853';
+        statusElement.style.color = '#137333';
+        
+        // Reset sau 3 giây
+        setTimeout(() => {
+          if (selectedAccounts.length > 0) {
+            statusElement.textContent = `Đã chọn: ${selectedAccounts.length} tài khoản`;
+            statusElement.style.background = 'white';
+            statusElement.style.borderColor = '#e8eaed';
+            statusElement.style.color = '#5f6368';
+          } else {
+            statusElement.style.display = 'none';
+          }
+        }, 3000);
       }).withFailureHandler(error => {
         console.error('❌ Lỗi tạo báo cáo:', error.toString());
-        alert('❌ Lỗi khi tạo báo cáo: ' + error.toString());
+        statusElement.textContent = `❌ Lỗi: ${error.toString()}`;
+        statusElement.style.background = '#f8d7da';
+        statusElement.style.borderColor = '#dc3545';
+        statusElement.style.color = '#721c24';
       }).taoCanDoiPhatSinh(startDate, endDate);
     }
 
@@ -619,14 +781,36 @@
       // Lưu ngày báo cáo
       saveReportDates(startDate, endDate);
       
+      // Hiển thị tiến trình xử lý
+      const statusElement = document.getElementById('status');
+      statusElement.textContent = `🔄 Đang tạo báo cáo Sổ Chi Tiết cho ${selectedAccounts.length} tài khoản...`;
+      statusElement.style.background = '#fff3cd';
+      statusElement.style.borderColor = '#ffc107';
+      statusElement.style.color = '#856404';
+      statusElement.style.display = 'block';
+      
       // Chạy báo cáo sổ chi tiết
       google.script.run.withSuccessHandler(() => {
         console.log('✅ Báo cáo Sổ Chi Tiết đã hoàn thành');
-        // Cập nhật trạng thái sau khi hoàn thành
-        updateStatus();
+        // Hiển thị thông báo thành công
+        statusElement.textContent = `✅ Đã tạo báo cáo Sổ Chi Tiết cho ${selectedAccounts.length} tài khoản`;
+        statusElement.style.background = '#e6f4ea';
+        statusElement.style.borderColor = '#34a853';
+        statusElement.style.color = '#137333';
+        
+        // Reset sau 3 giây
+        setTimeout(() => {
+          statusElement.textContent = `Đã chọn: ${selectedAccounts.length} tài khoản`;
+          statusElement.style.background = 'white';
+          statusElement.style.borderColor = '#e8eaed';
+          statusElement.style.color = '#5f6368';
+        }, 3000);
       }).withFailureHandler(error => {
         console.error('❌ Lỗi tạo báo cáo:', error.toString());
-        alert('❌ Lỗi khi tạo báo cáo: ' + error.toString());
+        statusElement.textContent = `❌ Lỗi: ${error.toString()}`;
+        statusElement.style.background = '#f8d7da';
+        statusElement.style.borderColor = '#dc3545';
+        statusElement.style.color = '#721c24';
       }).taoSoChiTietTaiKhoan_V2(startDate, endDate, selectedAccounts);
     }
 
@@ -640,6 +824,204 @@
       }).withFailureHandler(error => {
         console.log('❌ Lỗi lưu ngày báo cáo:', error.toString());
       }).saveReportDates(startDate, endDate);
+    }
+
+    // ==================== CHỨC NĂNG HÀNG HÓA ====================
+    
+    function renderHangHoaList(hangHoaToRender) {
+      const listElement = document.getElementById('hanghoaList');
+      const loadingElement = document.getElementById('loadingHangHoa');
+      
+      if (hangHoaToRender.length === 0) {
+        loadingElement.style.display = 'none';
+        listElement.innerHTML = '<div class="no-results" style="padding: 20px; text-align: center; color: #5f6368; font-style: italic;">Không tìm thấy hàng hóa phù hợp.</div>';
+        return;
+      }
+      
+      loadingElement.style.display = 'none';
+      listElement.style.display = 'block';
+      
+      let html = '';
+      hangHoaToRender.forEach(item => {
+        const isChecked = selectedHangHoaIds.has(item.uniqueId) ? 'checked' : '';
+        html += `
+          <label class="hanghoa-item" for="hanghoa-${item.uniqueId}">
+            <input type="checkbox" id="hanghoa-${item.uniqueId}" class="hanghoa-checkbox" onchange="toggleHangHoaSelection('${item.uniqueId}')" ${isChecked}>
+            <div class="hanghoa-info">
+              <div class="hanghoa-name">${item.tenHang}</div>
+              <div class="hanghoa-code">
+                <span class="ma-kho">${item.maKho}</span><span>${item.maHang}</span>
+              </div>
+              <div class="hanghoa-details">Quy cách: ${item.quyCach || 'N/A'} | ĐVT: ${item.dvt || 'N/A'}</div>
+            </div>
+          </label>
+        `;
+      });
+      listElement.innerHTML = html;
+    }
+
+    function toggleHangHoaSelection(uniqueId) {
+      if (selectedHangHoaIds.has(uniqueId)) {
+        selectedHangHoaIds.delete(uniqueId);
+      } else {
+        selectedHangHoaIds.add(uniqueId);
+      }
+      updateHangHoaStatus();
+    }
+
+    function updateHangHoaStatus() {
+      const statusElement = document.getElementById('hanghoaStatus');
+      if (selectedHangHoaIds.size > 0) {
+        statusElement.textContent = `Đã chọn: ${selectedHangHoaIds.size} hàng hóa`;
+        statusElement.style.display = 'block';
+      } else {
+        statusElement.style.display = 'none';
+      }
+    }
+
+    function filterHangHoa() {
+      const searchTerm = document.getElementById('hanghoaSearchInput').value.toLowerCase();
+      const clearBtn = document.querySelectorAll('.clear-search')[2];
+      
+      if (searchTerm) {
+        clearBtn.style.display = 'block';
+        const filtered = allHangHoa.filter(item => 
+          item.maKho.toLowerCase().includes(searchTerm) || 
+          item.maHang.toLowerCase().includes(searchTerm) ||
+          item.tenHang.toLowerCase().includes(searchTerm)
+        );
+        renderHangHoaList(filtered);
+      } else {
+        clearBtn.style.display = 'none';
+        renderHangHoaList(allHangHoa);
+      }
+    }
+
+    function clearHangHoaSearch() {
+      document.getElementById('hanghoaSearchInput').value = '';
+      document.querySelectorAll('.clear-search')[2].style.display = 'none';
+      renderHangHoaList(allHangHoa);
+    }
+
+    function applyHangHoaSelection() {
+      if (selectedHangHoaIds.size === 0) {
+        alert('Vui lòng chọn ít nhất một hàng hóa');
+        return;
+      }
+
+      const selectedItems = Array.from(selectedHangHoaIds).map(id => {
+        return allHangHoa.find(item => item.uniqueId === id);
+      }).filter(Boolean);
+
+      google.script.run.withSuccessHandler(result => {
+        if (result.success) {
+          // Hiển thị thông báo thành công
+          const statusElement = document.getElementById('hanghoaStatus');
+          statusElement.textContent = `✅ Đã ghi ${result.count} hàng hóa vào sheet`;
+          statusElement.style.background = '#e6f4ea';
+          statusElement.style.borderColor = '#34a853';
+          statusElement.style.color = '#137333';
+          
+          // Reset sau 3 giây
+          setTimeout(() => {
+            statusElement.textContent = `Đã chọn: 0 hàng hóa`;
+            statusElement.style.background = 'white';
+            statusElement.style.borderColor = '#e8eaed';
+            statusElement.style.color = '#5f6368';
+          }, 3000);
+          
+          // Xóa selection và reset checkbox
+          selectedHangHoaIds.clear();
+          updateHangHoaStatus();
+          
+          // Reset tất cả checkbox
+          const checkboxes = document.querySelectorAll('.hanghoa-checkbox');
+          checkboxes.forEach(cb => {
+            cb.checked = false;
+          });
+          
+        } else {
+          alert('Lỗi: ' + result.error);
+        }
+      }).withFailureHandler(error => {
+        alert('Lỗi hệ thống: ' + error.toString());
+      }).ghiHangHoaVaoSheet(selectedItems);
+    }
+
+    function selectAllHangHoa() {
+      const checkboxes = document.querySelectorAll('.hanghoa-checkbox');
+      checkboxes.forEach(cb => {
+        cb.checked = true;
+        const uniqueId = cb.id.replace('hanghoa-', '');
+        selectedHangHoaIds.add(uniqueId);
+      });
+      updateHangHoaStatus();
+    }
+
+    function deselectAllHangHoa() {
+      const checkboxes = document.querySelectorAll('.hanghoa-checkbox');
+      checkboxes.forEach(cb => {
+        cb.checked = false;
+      });
+      selectedHangHoaIds.clear();
+      updateHangHoaStatus();
+    }
+
+    function createNhapXuatTon() {
+      const startDate = document.getElementById('hanghoaStartDate').value;
+      const endDate = document.getElementById('hanghoaEndDate').value;
+      
+      if (!startDate || !endDate) {
+        alert('Vui lòng chọn kỳ báo cáo');
+        return;
+      }
+      
+      // Lưu ngày báo cáo
+      saveReportDates(startDate, endDate);
+      
+      // Lấy danh sách hàng hóa đã chọn (nếu không chọn thì tính cho tất cả)
+      let selectedItems = [];
+      if (selectedHangHoaIds.size > 0) {
+        selectedItems = Array.from(selectedHangHoaIds).map(id => {
+          return allHangHoa.find(item => item.uniqueId === id);
+        }).filter(Boolean);
+      } else {
+        // Nếu không chọn hàng hóa nào thì tính cho tất cả
+        selectedItems = allHangHoa;
+      }
+      
+      // Hiển thị tiến trình xử lý
+      const statusElement = document.getElementById('hanghoaStatus');
+      statusElement.textContent = `🔄 Đang tạo báo cáo NXT cho ${selectedItems.length} hàng hóa...`;
+      statusElement.style.background = '#fff3cd';
+      statusElement.style.borderColor = '#ffc107';
+      statusElement.style.color = '#856404';
+      statusElement.style.display = 'block';
+      
+      // Chạy báo cáo NXT
+      google.script.run.withSuccessHandler(() => {
+        console.log('✅ Báo cáo Nhập Xuất Tồn đã hoàn thành');
+        // Hiển thị thông báo thành công
+        statusElement.textContent = `✅ Đã tạo báo cáo NXT cho ${selectedItems.length} hàng hóa`;
+        statusElement.style.background = '#e6f4ea';
+        statusElement.style.borderColor = '#34a853';
+        statusElement.style.color = '#137333';
+        
+        // Reset sau 3 giây
+        setTimeout(() => {
+          statusElement.textContent = `Đã chọn: ${selectedHangHoaIds.size} hàng hóa`;
+          statusElement.style.background = 'white';
+          statusElement.style.borderColor = '#e8eaed';
+          statusElement.style.color = '#5f6368';
+        }, 3000);
+        
+      }).withFailureHandler(error => {
+        console.error('❌ Lỗi tạo báo cáo NXT:', error.toString());
+        statusElement.textContent = `❌ Lỗi: ${error.toString()}`;
+        statusElement.style.background = '#f8d7da';
+        statusElement.style.borderColor = '#dc3545';
+        statusElement.style.color = '#721c24';
+      }).taoNhapXuatTonFromSidebar(startDate, endDate, selectedItems);
     }
   </script>
 </body>
