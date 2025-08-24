@@ -36,6 +36,63 @@ function runLIFO() {
   tinhGiaXuatKho('LIFO');
 }
 
+/**
+ * HÀM PHỤ: Tạo Map lookup thông tin hàng hóa từ sheet DMHH
+ * Sử dụng cache để tăng hiệu suất
+ */
+function getHangHoaLookupMap() {
+  try {
+    const cache = CacheService.getScriptCache();
+    const CACHE_KEY = 'HANGHOA_LOOKUP_MAP';
+    
+    // Kiểm tra cache trước
+    const cachedData = cache.get(CACHE_KEY);
+    if (cachedData != null) {
+      console.log('✅ Loaded hangHoaMap from CACHE');
+      return new Map(JSON.parse(cachedData));
+    }
+    
+    // Cache miss - đọc từ sheet DMHH
+    console.log('⚠️ Cache miss. Reading products from Sheet "DMHH" for auto-fill...');
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheetDMHH = ss.getSheetByName('DMHH');
+    
+    if (!sheetDMHH) {
+      throw new Error('Không tìm thấy sheet "DMHH"');
+    }
+    
+    const data = sheetDMHH.getDataRange().getValues();
+    const hangHoaMap = new Map();
+    
+    // Bắt đầu từ dòng 2 để bỏ qua tiêu đề
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i];
+      const maKho = row[0]?.toString().trim();
+      const maHang = row[1]?.toString().trim();
+      
+      if (maKho && maHang) { // Chỉ lấy hàng hóa có đủ mã kho và mã hàng
+        const key = `${maKho}|${maHang}`;
+        hangHoaMap.set(key, {
+          tenHang: row[2]?.toString().trim() || '',
+          quyCach: row[3]?.toString().trim() || '',
+          dvt: row[4]?.toString().trim() || ''
+        });
+      }
+    }
+    
+    // Lưu vào cache trong 15 phút (900 giây)
+    const mapArray = Array.from(hangHoaMap.entries());
+    cache.put(CACHE_KEY, JSON.stringify(mapArray), 900);
+    
+    console.log(`✅ Loaded and cached ${hangHoaMap.size} products for auto-fill.`);
+    return hangHoaMap;
+    
+  } catch (e) {
+    console.error('❌ Error in getHangHoaLookupMap: ' + e.toString());
+    return new Map(); // Trả về Map rỗng nếu có lỗi
+  }
+}
+
 function onEdit(e) {
   try {
     const range = e.range;
@@ -45,63 +102,73 @@ function onEdit(e) {
     const startCol = range.getColumn();
     const numRows = range.getNumRows();
 
-    // --- TÁC VỤ 1 & 2: Tự động chạy báo cáo (Không thay đổi) ---
+    // --- TÁC VỤ 1: Tự động chạy báo cáo Cân đối phát sinh ---
     if (sheetName === 'CDPS' && numRows === 1 && ( (startRow === 1 && startCol === 12) || (startRow === 2 && startCol === 12) )) {
       SpreadsheetApp.getActiveSpreadsheet().toast('Đang tính toán lại Cân đối phát sinh...');
       Utilities.sleep(1000);
       taoCanDoiPhatSinh();
       return;
     }
-    // Đã lược bỏ: Auto-trigger cho Nhập Xuất Tồn từ sheet NXT
-    // if (sheetName === 'NXT' && numRows === 1 && ( (startRow === 1 && startCol === 15) || (startRow === 2 && startCol === 15) )) {
-    //   SpreadsheetApp.getActiveSpreadsheet().toast('Đang tính toán lại Nhập xuất tồn...');
-    //   Utilities.sleep(1000);
-    //   taoNhapXuatTon();
-    //   return;
-    // }
 
-    // --- TÁC VỤ 3: Tự động điền thông tin hàng hóa (Nâng cấp) ---
+    // --- TÁC VỤ 2: Tự động điền thông tin hàng hóa (Nâng cấp) ---
+    // Chỉ xử lý các sheet có tên bắt đầu bằng DL_
     if (!sheetName.startsWith('DL_') || startRow <= 1) return;
 
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    
+    // Lấy header row để tìm vị trí các cột cần thiết
     const headerRow = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
     const cleanHeaders = headerRow.map(h => h.toString().trim().toUpperCase());
     
+    // Tìm vị trí các cột cần thiết
     const colIndexMaKho = cleanHeaders.indexOf('MA_KHO');
     const colIndexMaHang = cleanHeaders.indexOf('MA_HANG');
-
-    // **SỬA LỖI**: Thêm điều kiện kiểm tra cột được chỉnh sửa
-    // 1. Lấy vị trí cột cuối cùng của vùng được chỉnh sửa
-    const endCol = startCol + range.getNumColumns() - 1; 
-    // 2. Kiểm tra xem vùng được sửa có "chạm" vào cột MA_KHO hoặc MA_HANG không
-    const isRelevantColumnEdited = (endCol >= colIndexMaKho + 1 && startCol <= colIndexMaKho + 1) || 
-                                   (endCol >= colIndexMaHang + 1 && startCol <= colIndexMaHang + 1);
-
-    // 3. Nếu không có sự thay đổi nào ở 2 cột này -> thoát hàm
-    if (!isRelevantColumnEdited) {
-      return;
-    }
-    // Kết thúc phần sửa lỗi
-
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    ss.toast(`Đang xử lý ${numRows} dòng...`, 'Tự động điền', 5);
-    
     const colIndexTenHang = cleanHeaders.indexOf('TEN_HANG');
     const colIndexQuyCach = cleanHeaders.indexOf('QUY_CACH');
     const colIndexDVT = cleanHeaders.indexOf('DVT');
 
-    if (colIndexMaKho === -1 || colIndexMaHang === -1 || (colIndexTenHang === -1 && colIndexQuyCach === -1 && colIndexDVT === -1)) {
-        return;
+    // Kiểm tra xem có đủ các cột cần thiết không
+    if (colIndexMaKho === -1 || colIndexMaHang === -1) {
+      console.log(`⚠️ Sheet ${sheetName} không có cột MA_KHO hoặc MA_HANG`);
+      return;
     }
 
-    const hangHoaMap = getHangHoaLookupMap();
-    if (hangHoaMap.size === 0) return;
+    // Kiểm tra xem có ít nhất một cột để điền không
+    if (colIndexTenHang === -1 && colIndexQuyCach === -1 && colIndexDVT === -1) {
+      console.log(`⚠️ Sheet ${sheetName} không có cột nào để điền (TEN_HANG, QUY_CACH, DVT)`);
+      return;
+    }
 
+    // Kiểm tra xem vùng được chỉnh sửa có liên quan đến cột MA_KHO hoặc MA_HANG không
+    const endCol = startCol + range.getNumColumns() - 1;
+    const isRelevantColumnEdited = (endCol >= colIndexMaKho + 1 && startCol <= colIndexMaKho + 1) || 
+                                   (endCol >= colIndexMaHang + 1 && startCol <= colIndexMaHang + 1);
+
+    // Nếu không có sự thay đổi nào ở 2 cột này -> thoát hàm
+    if (!isRelevantColumnEdited) {
+      return;
+    }
+
+    // Thông báo đang xử lý
+    ss.toast(`Đang xử lý ${numRows} dòng...`, 'Tự động điền thông tin hàng hóa', 5);
+    
+    // Lấy Map thông tin hàng hóa
+    const hangHoaMap = getHangHoaLookupMap();
+    if (hangHoaMap.size === 0) {
+      ss.toast('Không thể đọc dữ liệu từ sheet DMHH', 'Lỗi', 10);
+      return;
+    }
+
+    // Lấy dữ liệu từ vùng được chỉnh sửa
     const dataRange = sheet.getRange(startRow, 1, numRows, sheet.getLastColumn()).getValues();
+    
+    // Chuẩn bị dữ liệu để điền
     const tenHangValues = [];
     const quyCachValues = [];
     const dvtValues = [];
     let filledCount = 0;
 
+    // Xử lý từng dòng
     for (let i = 0; i < numRows; i++) {
       const currentRow = dataRange[i];
       const maKho = currentRow[colIndexMaKho]?.toString().trim();
@@ -115,10 +182,12 @@ function onEdit(e) {
           quyCachValues.push([itemInfo.quyCach]);
           dvtValues.push([itemInfo.dvt]);
           filledCount++;
+          console.log(`✅ Tìm thấy: ${maKho} - ${maHang} → ${itemInfo.tenHang}`);
         } else {
           tenHangValues.push(['']);
           quyCachValues.push(['']);
           dvtValues.push(['']);
+          console.log(`⚠️ Không tìm thấy: ${maKho} - ${maHang}`);
         }
       } else {
         tenHangValues.push(['']);
@@ -127,6 +196,7 @@ function onEdit(e) {
       }
     }
 
+    // Điền dữ liệu vào các cột tương ứng
     if (colIndexTenHang > -1 && tenHangValues.length > 0) {
       sheet.getRange(startRow, colIndexTenHang + 1, numRows, 1).setValues(tenHangValues);
     }
@@ -137,11 +207,14 @@ function onEdit(e) {
       sheet.getRange(startRow, colIndexDVT + 1, numRows, 1).setValues(dvtValues);
     }
 
-    ss.toast(`✅ Đã tự động điền ${filledCount}/${numRows} dòng.`, 'Hoàn thành!', 5);
+    // Thông báo hoàn thành
+    const message = `✅ Đã tự động điền ${filledCount}/${numRows} dòng từ sheet DMHH`;
+    ss.toast(message, 'Hoàn thành!', 5);
+    console.log(message);
 
   } catch (error) {
-    console.error('LỖI TRONG HÀM ONEDIT (Bản nâng cấp): ' + error.toString());
-    SpreadsheetApp.getActiveSpreadsheet().toast('Gặp lỗi, vui lòng xem Logs.', 'Lỗi Script', 10);
+    console.error('❌ LỖI TRONG HÀM ONEDIT: ' + error.toString());
+    SpreadsheetApp.getActiveSpreadsheet().toast('Gặp lỗi khi tự động điền, vui lòng xem Logs.', 'Lỗi Script', 10);
   }
 }
 
