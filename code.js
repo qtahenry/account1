@@ -1325,6 +1325,15 @@ function isDirectChild(parentAccount, childAccount) {
 }
 
 /**
+ * HÀM PHỤ: Kiểm tra xem một tài khoản có phải là con của tài khoản cha không (bao gồm tất cả các cấp)
+ * SỬA LẠI: Tổng hợp tất cả các cấp con, không chỉ con trực tiếp
+ */
+function isChildAccount(parentAccount, childAccount) {
+  // Tài khoản con phải dài hơn tài khoản cha và bắt đầu bằng mã của cha
+  return childAccount.length > parentAccount.length && childAccount.startsWith(parentAccount);
+}
+
+/**
  * HÀM PHỤ: Tìm tài khoản con sử dụng index (SỬA LẠI - TÌM TẤT CẢ CÁC CẤP CON)
  */
 function findChildAccountsOptimized(parentAccount, accountIndex) {
